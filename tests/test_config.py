@@ -3,13 +3,15 @@ from unittest.mock import patch, mock_open
 import os
 from pathlib import Path
 
-from aic.config import get_config, DEFAULT_CONFIG
+from aic.config import get_config, DEFAULT_CONFIG, _get_raw_config
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
         # Clear environment variables to avoid test contamination
         self.env_patcher = patch.dict(os.environ, clear=True)
         self.env_patcher.start()
+        # Clear config cache
+        _get_raw_config.cache_clear()
 
     def tearDown(self):
         self.env_patcher.stop()

@@ -5,6 +5,7 @@ import os
 import tomllib
 from pathlib import Path
 import copy
+from functools import lru_cache
 
 DEFAULT_CONFIG = {
     "provider": "deepseek",
@@ -32,10 +33,11 @@ DEFAULT_CONFIG = {
     }
 }
 
-def get_config() -> dict:
+@lru_cache(maxsize=1)
+def _get_raw_config() -> dict:
     """
-    加载配置。
-    优先级：环境变量 > config.toml > 代码默认值
+    加载原始配置，带 LRU 缓存。
+    由于返回的是 dict，调用者需要 deepcopy 以防修改缓存对象。
     """
     config = copy.deepcopy(DEFAULT_CONFIG)
 
@@ -69,3 +71,9 @@ def get_config() -> dict:
         config.setdefault("gemini", {})["api_key"] = os.environ["GEMINI_API_KEY"]
 
     return config
+
+def get_config() -> dict:
+    """
+    获取配置副本。
+    """
+    return copy.deepcopy(_get_raw_config())
