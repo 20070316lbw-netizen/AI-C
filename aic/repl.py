@@ -204,13 +204,15 @@ def start(config: dict):
                 else:
                     from rich.table import Table
                     from rich.console import Console
+                    import datetime
                     table = Table(show_header=True, header_style="bold cyan")
                     table.add_column("时间")
                     table.add_column("event")
                     table.add_column("payload 摘要")
 
                     for log in reversed(logs):
-                        time_str = log.get("time", "")
+                        ts = log.get("ts", 0)
+                        time_str = datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S") if ts else ""
                         event = log.get("event", "")
                         payload = log.get("payload", {})
 

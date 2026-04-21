@@ -1,14 +1,13 @@
 import json
 import os
-from datetime import datetime
+import time
+from datetime import date
 from typing import List, Dict
 
 def log_event(event: str, session_id: str, payload: Dict) -> None:
     """追加写入 ~/.aic/logs/YYYY-MM-DD.jsonl，失败静默。"""
     try:
-        now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%H:%M:%S")
+        date_str = date.today().strftime("%Y-%m-%d")
 
         log_dir = os.path.expanduser("~/.aic/logs")
         os.makedirs(log_dir, exist_ok=True)
@@ -16,7 +15,7 @@ def log_event(event: str, session_id: str, payload: Dict) -> None:
         log_path = os.path.join(log_dir, f"{date_str}.jsonl")
 
         log_entry = {
-            "time": time_str,
+            "ts": time.time(),
             "event": event,
             "session_id": session_id,
             "payload": payload
@@ -30,8 +29,7 @@ def log_event(event: str, session_id: str, payload: Dict) -> None:
 def read_today() -> List[Dict]:
     """读取今日日志，返回事件列表，文件不存在返回 []。"""
     try:
-        now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
+        date_str = date.today().strftime("%Y-%m-%d")
         log_path = os.path.expanduser(f"~/.aic/logs/{date_str}.jsonl")
 
         if not os.path.exists(log_path):
