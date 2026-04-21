@@ -32,14 +32,6 @@ DEFAULT_CONFIG = {
     }
 }
 
-def _deep_update(d: dict, u: dict) -> dict:
-    for k, v in u.items():
-        if isinstance(v, dict):
-            d[k] = _deep_update(d.get(k, {}), v)
-        else:
-            d[k] = v
-    return d
-
 def get_config() -> dict:
     """
     加载配置。
@@ -53,7 +45,12 @@ def get_config() -> dict:
         try:
             with open(config_path, "rb") as f:
                 toml_config = tomllib.load(f)
-            _deep_update(config, toml_config)
+
+            for k, v in toml_config.items():
+                if isinstance(v, dict) and k in config and isinstance(config[k], dict):
+                    config[k].update(v)
+                else:
+                    config[k] = v
         except OSError:
             # 文件不存在等 OS 级别错误时使用默认值，不报错
             pass
@@ -63,18 +60,12 @@ def get_config() -> dict:
         config["provider"] = os.environ["AIC_PROVIDER"]
 
     if "ANTHROPIC_API_KEY" in os.environ:
-        if "claude" not in config:
-            config["claude"] = {}
-        config["claude"]["api_key"] = os.environ["ANTHROPIC_API_KEY"]
+        config.setdefault("claude", {})["api_key"] = os.environ["ANTHROPIC_API_KEY"]
 
     if "DEEPSEEK_API_KEY" in os.environ:
-        if "deepseek" not in config:
-            config["deepseek"] = {}
-        config["deepseek"]["api_key"] = os.environ["DEEPSEEK_API_KEY"]
+        config.setdefault("deepseek", {})["api_key"] = os.environ["DEEPSEEK_API_KEY"]
 
     if "GEMINI_API_KEY" in os.environ:
-        if "gemini" not in config:
-            config["gemini"] = {}
-        config["gemini"]["api_key"] = os.environ["GEMINI_API_KEY"]
+        config.setdefault("gemini", {})["api_key"] = os.environ["GEMINI_API_KEY"]
 
     return config
