@@ -9,8 +9,11 @@ from aic.session import Session
 from aic.tui import TUIRenderer
 from aic.providers.claude import ClaudeProvider
 from aic.providers.openai_compat import OpenAICompatProvider
+from aic.memory.store import MemoryStore
+import aic.kairos as kairos
 
 def start(config: dict):
+    store = MemoryStore()
     provider_name = config.get("provider", "deepseek")
     provider_config = config.get(provider_name, {})
 
@@ -127,6 +130,97 @@ def start(config: dict):
                 print("  /tree       - Print directory tree")
                 print("  /help       - Show this help message")
                 print("  /exit       - Exit aic")
+
+            elif cmd == "/poor":
+                session.poor_mode = not session.poor_mode
+                if session.poor_mode:
+                    from rich import print as rprint
+                    rprint("[bold green]POOR MODE: ON[/bold green]")
+                else:
+                    from rich import print as rprint
+                    rprint("[bold yellow]POOR MODE: OFF[/bold yellow]")
+                kairos.log_event("poor_toggled", session.session_id(), {"enabled": session.poor_mode})
+
+            elif cmd == "/memory":
+                mem_type = parts[1] if len(parts) > 1 else None
+                # Support user/feedback/project/reference type check
+                if mem_type and mem_type not in ["user", "feedback", "project", "reference"]:
+                    print(f"Unknown memory type: {mem_type}")
+                    continue
+
+                mems = store.list(type=mem_type, include_archived=False)
+                from rich.table import Table
+                from rich.console import Console
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("id")
+                table.add_column("type")
+                table.add_column("weight")
+                table.add_column("processed")
+                table.add_column("content")
+
+                for m in mems:
+                    content_trunc = m.content[:60] + ("..." if len(m.content) > 60 else "")
+                    table.add_row(
+                        m.id[:8],
+                        m.type,
+                        f"{m.weight:.1f}",
+                        "Yes" if m.is_processed else "No",
+                        content_trunc
+                    )
+                Console().print(table)
+                print(f"共 {len(mems)} 条")
+
+            elif cmd == "/forget":
+                if len(parts) < 2:
+                    print("Usage: /forget <id>")
+                    continue
+                target_id = parts[1]
+                if len(target_id) < 4:
+                    print("id 至少需要 4 位")
+                    continue
+
+                matches = store.prefix_match(target_id)
+                if len(matches) == 0:
+                    print("未找到匹配的记忆")
+                elif len(matches) > 1:
+                    for m in matches:
+                        print(f"- {m.id}")
+                    print("前缀冲突，请输入更长的 id")
+                else:
+                    match = matches[0]
+                    from rich.prompt import Confirm
+                    content_trunc = match.content[:40]
+                    if Confirm.ask(f"确认软删除 {match.id}: {content_trunc}？"):
+                        store.soft_delete(match.id)
+                        kairos.log_event("memory_forgotten", session.session_id(), {"id": match.id})
+                        print("已删除")
+                    else:
+                        print("已取消")
+
+            elif cmd == "/log":
+                logs = kairos.read_today()
+                if not logs:
+                    print("今日暂无 KAIROS 日志")
+                else:
+                    from rich.table import Table
+                    from rich.console import Console
+                    table = Table(show_header=True, header_style="bold cyan")
+                    table.add_column("时间")
+                    table.add_column("event")
+                    table.add_column("payload 摘要")
+
+                    for log in reversed(logs):
+                        time_str = log.get("time", "")
+                        event = log.get("event", "")
+                        payload = log.get("payload", {})
+
+                        import json
+                        payload_str = json.dumps(payload, ensure_ascii=False)
+                        if len(payload_str) > 80:
+                            payload_str = payload_str[:80] + "..."
+
+                        table.add_row(time_str, event, payload_str)
+                    Console().print(table)
 
             elif cmd == "/exit":
                 print("Exiting...")
