@@ -1,0 +1,29 @@
+provider = "deepseek"   # 默认 provider：claude / deepseek / gemini / custom
+
+[claude]
+api_key  = "sk-ant-..."
+model    = "claude-sonnet-4-20250514"
+base_url = "https://api.anthropic.com"
+
+[deepseek]
+api_key  = "sk-..."
+model    = "deepseek-chat"
+base_url = "https://api.deepseek.com"
+
+[gemini]
+api_key  = "..."
+model    = "gemini-2.5-pro"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+# 任意 OpenAI 兼容 provider
+[custom]
+api_key  = "..."
+model    = "model-name"
+base_url = "https://your-provider.com"
+
+[dream]
+min_unprocessed = 20    # 门1：未整理记忆条数阈值
+min_interval_h  = 24    # 门2：距上次 dream 最短间隔（小时）
+min_sessions    = 5     # 门2：最少历史会话数
+lock_timeout_h  = 1     # 门3：PID 锁过期时间（小时）
+model           = "deepseek-chat"   # 子代理 model，建议用便宜的
