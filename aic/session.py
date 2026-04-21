@@ -11,6 +11,7 @@ class Session:
         self._session_id = str(uuid.uuid4())
         self._messages: list[dict] = []
         self._context_files: list[str] = []
+        self.poor_mode: bool = False
 
         self._global_context = ""
         self._project_context = ""
