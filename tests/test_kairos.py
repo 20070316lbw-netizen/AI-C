@@ -1,6 +1,7 @@
 import unittest
 import os
 import tempfile
+import time
 from unittest.mock import patch
 from datetime import datetime
 
@@ -34,7 +35,14 @@ class TestKairos(unittest.TestCase):
         self.assertEqual(logs[0]["event"], "test_event")
         self.assertEqual(logs[0]["session_id"], "session_123")
         self.assertEqual(logs[0]["payload"], {"key": "value"})
-        self.assertIn("time", logs[0])
+
+        # Verify ts is present and time is not
+        self.assertIn("ts", logs[0])
+        self.assertNotIn("time", logs[0])
+
+        # Verify ts is a float and roughly equal to current time
+        self.assertIsInstance(logs[0]["ts"], float)
+        self.assertTrue(logs[0]["ts"] > time.time() - 5)
 
     def test_multiple_events(self):
         # Log multiple events
