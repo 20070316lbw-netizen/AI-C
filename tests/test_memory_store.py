@@ -161,6 +161,43 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+    def test_list_by_type_order_by(self):
+        mem1 = Memory(id="1", content="a", type="user", weight=2.0)
+        mem2 = Memory(id="2", content="b", type="user", weight=1.0)
+        mem3 = Memory(id="3", content="c", type="user", weight=1.0)
+        mem3.updated_at = mem2.updated_at + 10 # ensure mem3 is newer
+        self.store.add(mem1)
+        self.store.add(mem2)
+        self.store.add(mem3)
+
+        # Valid order_by
+        res = self.store.list_by_type("user", order_by="weight ASC, updated_at ASC")
+        self.assertEqual(len(res), 3)
+        self.assertEqual(res[0].id, "2")
+        self.assertEqual(res[1].id, "3")
+        self.assertEqual(res[2].id, "1")
+
+        # Invalid column
+        with self.assertRaisesRegex(ValueError, "Invalid order_by column"):
+            self.store.list_by_type("user", order_by="invalid_col ASC")
+
+        # Invalid direction
+        with self.assertRaisesRegex(ValueError, "Invalid order_by direction"):
+            self.store.list_by_type("user", order_by="weight INVALID")
+
+        # SQL Injection attempt
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="weight ASC; DROP TABLE memories;")
+
+        # Empty string
+        with self.assertRaisesRegex(ValueError, "Invalid order_by clause: empty part"):
+            self.store.list_by_type("user", order_by="  ")
+
+        # Too many tokens
+        with self.assertRaisesRegex(ValueError, "Invalid order_by clause: too many tokens"):
+            self.store.list_by_type("user", order_by="weight ASC ASC")
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
