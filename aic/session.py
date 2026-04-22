@@ -8,6 +8,13 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List
 
+# Import for warnings
+from aic.errors import print_warning
+
+# Safety limits for context injection
+MAX_SINGLE_FILE_CHARS = 500 * 1024  # 500KB per file
+MAX_TOTAL_CONTEXT_CHARS = 400 * 1024  # 400KB total across all files
+
 @dataclass
 class TurnUsage:
     turn: int
@@ -91,6 +98,9 @@ class Session:
         self.accumulator = UsageAccumulator()
         self.token_guard = TokenGuard()
 
+        # Total characters of injected context files
+        self._total_context_chars = 0
+
         self._global_context = ""
         self._project_context = ""
 
@@ -117,12 +127,27 @@ class Session:
         self._messages.append({"role": "assistant", "content": content})
 
     def add_context_file(self, path: str):
-        """记录 context file 路径，如果不重复且存在则添加"""
+        """记录 context file 路径，如果不重复且存在则添加，并执行大小限制检查"""
         p = Path(path)
         if p.is_file():
+            try:
+                content = p.read_text(encoding="utf-8")
+            except Exception as e:
+                print_warning(f"Failed to read file for context: {path} - {e}")
+                return
+            # Single file size limit
+            if len(content) > MAX_SINGLE_FILE_CHARS:
+                print_warning(f"Skipped (too large): {path}")
+                return
+            # Total context size limit
+            if getattr(self, "_total_context_chars", 0) + len(content) > MAX_TOTAL_CONTEXT_CHARS:
+                print_warning(f"Context budget full. Cannot add: {path}")
+                return
             abs_path = str(p.absolute())
             if abs_path not in self._context_files:
                 self._context_files.append(abs_path)
+                # Update total counter
+                self._total_context_chars += len(content)
 
     def get_system(self) -> str:
         system_parts = []
@@ -160,11 +185,15 @@ class Session:
     def clear(self):
         """清空历史，保留 context files"""
         self._messages.clear()
+        # Reset total context counter (files stay loaded)
+        self._total_context_chars = 0
 
     def reset(self):
         """清空历史 + context files"""
         self._messages.clear()
         self._context_files.clear()
+        # Reset total context counter
+        self._total_context_chars = 0
 
     def session_id(self) -> str:
         return self._session_id
