@@ -101,6 +101,8 @@ class Session:
         # Total characters of injected context files
         self._total_context_chars = 0
 
+        self._context_cache: dict[str, tuple[float, str]] = {}
+
         self._global_context = ""
         self._project_context = ""
 
@@ -159,7 +161,12 @@ class Session:
 
         for filepath in self._context_files:
             try:
-                content = Path(filepath).read_text(encoding="utf-8")
+                mtime = os.path.getmtime(filepath)
+                if filepath in self._context_cache and self._context_cache[filepath][0] == mtime:
+                    content = self._context_cache[filepath][1]
+                else:
+                    content = Path(filepath).read_text(encoding="utf-8")
+                    self._context_cache[filepath] = (mtime, content)
                 system_parts.append(f"--- File: {filepath} ---\n{content.strip()}")
             except Exception:
                 pass
