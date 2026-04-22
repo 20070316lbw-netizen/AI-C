@@ -216,9 +216,8 @@ class Consolidator:
             memories = self.store.list_by_type(mem_type, order_by="weight ASC, updated_at ASC")
             if len(memories) > max_per_type:
                 excess = memories[max_per_type:]
-                for m in excess:
-                    self.store.archive(m.id)
-                    self._result.archived += 1
+                self.store.archive_many([m.id for m in excess])
+                self._result.archived += len(excess)
 
         mems_to_mark = self.store.list_unprocessed(self.exclude_session_id)
         if mems_to_mark:

@@ -22,6 +22,22 @@ class TestMemoryStore(unittest.TestCase):
     def test_get_nonexistent(self):
         self.assertIsNone(self.store.get("nonexistent"))
 
+    def test_archive_many(self):
+        mems = [Memory(content=f"Test {i}", type="project") for i in range(1010)]
+        for m in mems:
+            self.store.add(m)
+
+        # Test empty
+        self.store.archive_many([])
+        self.assertEqual(self.store.get(mems[0].id).is_archived, 0)
+
+        # Test chunking (>500)
+        ids = [m.id for m in mems]
+        self.store.archive_many(ids)
+
+        for i in [0, 500, 1000, 1009]:
+            self.assertEqual(self.store.get(mems[i].id).is_archived, 1)
+
     def test_soft_delete(self):
         mem1 = Memory(content="Old info", type="project")
         self.store.add(mem1)

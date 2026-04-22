@@ -125,6 +125,24 @@ class MemoryStore:
             ''', (id,))
             self.conn.commit()
 
+    def archive_many(self, ids: List[str]) -> None:
+        if not ids:
+            return
+        with self.lock:
+            cursor = self.conn.cursor()
+
+            # SQLite limits parameters to 999
+            chunk_size = 500
+            for i in range(0, len(ids), chunk_size):
+                chunk = ids[i:i + chunk_size]
+                placeholders = ','.join(['?'] * len(chunk))
+                cursor.execute(f'''
+                    UPDATE memories
+                    SET is_archived = 1
+                    WHERE id IN ({placeholders})
+                ''', tuple(chunk))
+            self.conn.commit()
+
     def list_by_type(self, type: str, order_by: Optional[str] = None) -> List[Memory]:
         with self.lock:
             cursor = self.conn.cursor()
