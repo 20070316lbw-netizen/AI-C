@@ -176,6 +176,65 @@ class TestDreamLock(unittest.TestCase):
         state = lock.get_state()
         self.assertEqual(state["session_id"], self.session_id)
 
+    def test_is_stale_missing_started_at(self):
+        """测试 is_stale() 当 state 缺少 started_at 时，不认为已过期。"""
+        lock = DreamLock(self.lock_path, lock_timeout_h=1.0)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        state = lock.get_state()
+        del state["started_at"]
+        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+        self.assertFalse(lock.is_stale())
+
+    def test_get_state_corrupted_json(self):
+        """测试 get_state() 遇到无效 JSON 时返回 {}，并且 is_stale() 此时返回 False。"""
+        self.lock_path.write_text("not json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+
+        self.assertEqual(lock.get_state(), {})
+        self.assertFalse(lock.is_stale())
+
+    def test_acquire_missing_pid(self):
+        """测试 acquire() 遇到 lock 文件缺少 pid 字段时，判定损坏并接管。"""
+        self.lock_path.write_text(json.dumps({"session_id": "old_session"}), encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+
+        self.assertTrue(lock.acquire(self.session_id))
+
+        state = lock.get_state()
+        self.assertEqual(state["session_id"], self.session_id)
+        self.assertEqual(state["pid"], os.getpid())
+
+    def test_acquire_existing_lock_active_and_stale(self):
+        """测试 lock 文件中指定的进程仍然活跃，但 lock 本身已经过期，acquire() 应接管。"""
+        lock = DreamLock(self.lock_path, lock_timeout_h=1.0)
+        self.assertTrue(lock.acquire("old_session"))
+
+        # 强制更新 started_at 让其过期
+        state = lock.get_state()
+        state["started_at"] = time.time() - 3600 - 10
+        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+        # 模拟 os.kill() 执行成功 (进程仍然活跃)
+        with patch('os.kill') as mock_kill:
+            mock_kill.return_value = None
+
+            lock2 = DreamLock(self.lock_path, lock_timeout_h=1.0)
+            self.assertTrue(lock2.acquire(self.session_id))
+
+            new_state = lock2.get_state()
+            self.assertEqual(new_state["session_id"], self.session_id)
+
+    def test_update_state_corrupted(self):
+        """测试 update_state() 遇到损坏的锁文件时抛出 RuntimeError。"""
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path.write_text("not json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file is corrupted or empty"):
+            lock.update_state(1)
+
     def test_is_stale(self):
         """测试 is_stale() 基于 started_at 判断。"""
         lock = DreamLock(self.lock_path, lock_timeout_h=1.0)
