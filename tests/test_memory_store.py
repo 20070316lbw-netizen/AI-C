@@ -126,5 +126,29 @@ class TestMemoryStore(unittest.TestCase):
         retrieved = self.store.get(m.id)
         self.assertEqual(retrieved.weight, 1.5)
 
+    def test_last_accessed_at_updated_on_get(self):
+        m = Memory(content="test access", type="user")
+        self.store.add(m)
+        before_get = time.time()
+
+        # slight delay to ensure time diff
+        time.sleep(0.01)
+
+        retrieved = self.store.get(m.id)
+        self.assertIsNotNone(retrieved.last_accessed_at)
+        self.assertGreaterEqual(retrieved.last_accessed_at, before_get)
+
+    def test_last_accessed_at_increases_on_multiple_gets(self):
+        m = Memory(content="test access multiple", type="user")
+        self.store.add(m)
+
+        retrieved1 = self.store.get(m.id)
+        time.sleep(0.01)
+        retrieved2 = self.store.get(m.id)
+
+        self.assertIsNotNone(retrieved1.last_accessed_at)
+        self.assertIsNotNone(retrieved2.last_accessed_at)
+        self.assertGreaterEqual(retrieved2.last_accessed_at, retrieved1.last_accessed_at)
+
 if __name__ == '__main__':
     unittest.main()
