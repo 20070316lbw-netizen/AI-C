@@ -170,6 +170,23 @@ class TestDreamAgent(unittest.TestCase):
         from aic.dream.agent import DreamAgent
         self.agent = DreamAgent(self.store, "test")
 
+    def test_read_memory_not_found(self):
+        self.store.get.return_value = None
+        self.assertIsNone(self.agent.read_memory("missing_id"))
+        self.store.get.assert_called_with("missing_id")
+
+    def test_read_memory_found(self):
+        from aic.memory.types import Memory
+        mem = Memory(id="found_id", content="test content", type="user")
+        self.store.get.return_value = mem
+
+        result = self.agent.read_memory("found_id")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["id"], "found_id")
+        self.assertEqual(result["content"], "test content")
+        self.assertEqual(result["type"], "user")
+        self.store.get.assert_called_with("found_id")
+
     def test_add_memory_dedup(self):
         # mock existing
         mock_mem = MagicMock()
