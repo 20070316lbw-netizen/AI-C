@@ -41,10 +41,14 @@ class TestTUIRenderStatus(unittest.TestCase):
         self.table_patcher = patch('aic.tui.Table')
         self.layout_patcher = patch('aic.tui.Layout')
         self.console_patcher = patch('aic.tui.Console')
+        self.panel_patcher = patch('aic.tui.Panel')
+        self.text_patcher = patch('aic.tui.Text')
 
         self.MockTable = self.table_patcher.start()
         self.MockLayout = self.layout_patcher.start()
         self.MockConsole = self.console_patcher.start()
+        self.MockPanel = self.panel_patcher.start()
+        self.MockText = self.text_patcher.start()
 
         # Setup console mock
         self.mock_console_instance = self.MockConsole.return_value
@@ -60,6 +64,8 @@ class TestTUIRenderStatus(unittest.TestCase):
         self.table_patcher.stop()
         self.layout_patcher.stop()
         self.console_patcher.stop()
+        self.panel_patcher.stop()
+        self.text_patcher.stop()
 
     def test_render_status_updates_renderable(self):
         """Test that render_status correctly creates a Table and updates status_renderable."""
@@ -101,6 +107,42 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][model: claude-3][/dim]",
             "[dim][tokens: 1,234,567][/dim]"
         )
+
+    @patch('difflib.unified_diff')
+    def test_render_diff(self, mock_unified_diff):
+        """Test that render_diff correctly formats unified diff output."""
+        mock_unified_diff.return_value = [
+            "--- before.py\n",
+            "+++ after.py\n",
+            "@@ -1,3 +1,3 @@\n",
+            " line 1\n",
+            "-line 2\n",
+            "+line 3\n"
+        ]
+
+        self.renderer.render_diff("test.py", "line 1\nline 2", "line 1\nline 3")
+
+        self.MockConsole.return_value.width = 80
+
+        # Verify right_renderable was updated to a Panel with formatted Text
+        self.assertTrue(self.renderer.right_renderable is not None)
+        self.MockPanel.assert_any_call(self.MockText.return_value, title="Diff: test.py", border_style="yellow")
+
+        # Verify Text object received the right styling commands based on lines
+        mock_text = self.MockText.return_value
+        mock_text.append.assert_any_call("--- before.py\n", style="bold")
+        mock_text.append.assert_any_call("+++ after.py\n", style="bold")
+        mock_text.append.assert_any_call("@@ -1,3 +1,3 @@\n", style="cyan")
+        mock_text.append.assert_any_call(" line 1\n")
+        mock_text.append.assert_any_call("-line 2\n", style="on #3a1e1e")
+        mock_text.append.assert_any_call("+line 3\n", style="on #1e3a1e")
+        mock_text.append.assert_any_call("\n✓ 1 additions, 1 deletions", style="dim")
+
+    def test_clear_right(self):
+        """Test that clear_right sets right_renderable to None."""
+        self.renderer.right_renderable = "Some renderable"
+        self.renderer.clear_right()
+        self.assertIsNone(self.renderer.right_renderable)
 
 if __name__ == '__main__':
     unittest.main()
