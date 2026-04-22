@@ -192,7 +192,7 @@ CREATE TABLE memories (
 
 ## 开发路线图
 
-### 阶段一（当前）✅ 接近完成
+### 阶段一 ✅ 已完成
 
 - [x] 目录骨架
 - [x] config.py
@@ -201,20 +201,20 @@ CREATE TABLE memories (
 - [x] session.py（含双层 CONTEXT 注入）
 - [x] tui.py（左对话右 diff 分栏）
 - [x] repl.py 主循环 + slash 基础命令
-- [ ] 集成测试 + .gitignore（#8 进行中）
+- [x] 集成测试 + .gitignore（#8 进行中）
 
-### 阶段二（#8 合并后开始）
+### 阶段二 ✅ 已完成
 
 并行三个 issue：
-- **#9** `memory/types.py` + `memory/store.py` — SQLite 建表，软删除字段
-- **#10** `memory/extractor.py` — 每轮提取，Poor Mode 跳过
-- **#11** KAIROS 日志 + `/poor` `/memory` `/forget` `/log` 命令
+- [x] **#9** `memory/types.py` + `memory/store.py` — SQLite 建表，软删除字段
+- [x] **#10** `memory/extractor.py` — 每轮提取，Poor Mode 跳过
+- [x] **#11** KAIROS 日志 + `/poor` `/memory` `/forget` `/log` 命令
 
-### 阶段三
+### 阶段三 ✅ 已完成，正在验收
 
-- Dream 三道门控 + PID 锁 + 断点续传
-- Consolidator 4 阶段 + 受限子代理
-- `/dream` 命令
+- [x] Dream 三道门控 + PID 锁 + 断点续传
+- [x] Consolidator 4 阶段 + 受限子代理
+- [x] `/dream` 命令
 
 ### 阶段四
 
