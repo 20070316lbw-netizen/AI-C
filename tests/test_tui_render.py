@@ -12,7 +12,7 @@ MOCK_TEXT = MagicMock()
 MOCK_SYNTAX = MagicMock()
 MOCK_TABLE = MagicMock()
 
-class TestTUIRenderStatus(unittest.TestCase):
+class TestTUIRenderer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Apply sys.modules patches
@@ -101,6 +101,88 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][model: claude-3][/dim]",
             "[dim][tokens: 1,234,567][/dim]"
         )
+
+
+    @patch('aic.tui.Syntax')
+    @patch('aic.tui.Panel')
+    @patch('aic.errors.print_warning')
+    def test_render_file(self, mock_print_warning, mock_panel, mock_syntax):
+        """Test that render_file creates a Syntax and Panel correctly."""
+        filepath = "test.py"
+        content = "print('hello')\n" * 5
+
+        self.renderer.render_file(filepath, content)
+
+        mock_syntax.assert_called_once_with(content, 'py', theme="monokai", line_numbers=True)
+        mock_panel.assert_any_call(mock_syntax.return_value, title=filepath, border_style="green")
+        self.assertEqual(self.renderer.right_renderable, mock_panel.return_value)
+        mock_print_warning.assert_not_called()
+
+    @patch('aic.tui.Syntax')
+    @patch('aic.tui.Panel')
+    @patch('aic.errors.print_warning')
+    def test_render_file_truncates_large_files(self, mock_print_warning, mock_panel, mock_syntax):
+        """Test that render_file truncates files over 1000 lines."""
+        filepath = "large.txt"
+        content = "line\n" * 1005
+
+        self.renderer.render_file(filepath, content)
+
+        # Should be truncated to 1000 lines
+        expected_content = "\n".join(["line"] * 1000)
+        mock_syntax.assert_called_once_with(expected_content, 'txt', theme="monokai", line_numbers=True)
+        self.assertEqual(self.renderer.right_renderable, mock_panel.return_value)
+        mock_print_warning.assert_called_once_with(f"Display truncated at 1000 lines for {filepath} (full content still in context)")
+
+    @patch('aic.tui.Text')
+    @patch('aic.tui.Panel')
+    @patch('difflib.unified_diff')
+    def test_render_diff(self, mock_diff, mock_panel, mock_text):
+        """Test that render_diff correctly parses difflib output and formats it using Text."""
+        filepath = "changed.py"
+        before = "a\nb\n"
+        after = "a\nc\n"
+
+        # Mock unified_diff output
+        mock_diff.return_value = [
+            "--- changed.py\n",
+            "+++ changed.py\n",
+            "@@ -1,2 +1,2 @@\n",
+            " a\n",
+            "-b\n",
+            "+c\n"
+        ]
+
+        text_instance = mock_text.return_value
+
+        self.renderer.render_diff(filepath, before, after)
+
+        mock_diff.assert_called_once_with(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=filepath,
+            tofile=filepath
+        )
+
+        # Verify styles were applied based on diff line prefixes
+        text_instance.append.assert_any_call("--- changed.py\n", style="bold")
+        text_instance.append.assert_any_call("+++ changed.py\n", style="bold")
+        text_instance.append.assert_any_call("@@ -1,2 +1,2 @@\n", style="cyan")
+        text_instance.append.assert_any_call(" a\n")
+        text_instance.append.assert_any_call("-b\n", style="on #3a1e1e")
+        text_instance.append.assert_any_call("+c\n", style="on #1e3a1e")
+
+        # Verify summary line
+        text_instance.append.assert_any_call("\n✓ 1 additions, 1 deletions", style="dim")
+
+        mock_panel.assert_any_call(text_instance, title=f"Diff: {filepath}", border_style="yellow")
+        self.assertEqual(self.renderer.right_renderable, mock_panel.return_value)
+
+    def test_clear_right(self):
+        """Test that clear_right sets right_renderable to None."""
+        self.renderer.right_renderable = "Something"
+        self.renderer.clear_right()
+        self.assertIsNone(self.renderer.right_renderable)
 
 if __name__ == '__main__':
     unittest.main()
