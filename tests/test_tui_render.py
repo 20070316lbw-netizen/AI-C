@@ -12,7 +12,7 @@ MOCK_TEXT = MagicMock()
 MOCK_SYNTAX = MagicMock()
 MOCK_TABLE = MagicMock()
 
-class TestTUIRenderStatus(unittest.TestCase):
+class TestTUIRenderer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Apply sys.modules patches
@@ -101,6 +101,18 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][model: claude-3][/dim]",
             "[dim][tokens: 1,234,567][/dim]"
         )
+
+    def test_clear_right(self):
+        """Test that clear_right sets right_renderable to None and updates layout."""
+        # Set an initial value
+        self.renderer.right_renderable = MagicMock()
+
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout:
+            self.renderer.clear_right()
+
+            self.assertIsNone(self.renderer.right_renderable)
+            mock_update_layout.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()
