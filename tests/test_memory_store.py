@@ -63,6 +63,20 @@ class TestMemoryStore(unittest.TestCase):
 
         self.assertEqual(self.store.count_unprocessed(), 1)
 
+    def test_archive_many(self):
+        m1 = Memory(content="m1", type="user")
+        self.store.add(m1)
+        m2 = Memory(content="m2", type="user")
+        self.store.add(m2)
+
+        self.store.archive_many([m1.id, m2.id])
+
+        r1 = self.store.get(m1.id)
+        r2 = self.store.get(m2.id)
+
+        self.assertEqual(r1.is_archived, 1)
+        self.assertEqual(r2.is_archived, 1)
+
     def test_mark_processed(self):
         m1 = Memory(content="m1", type="user")
         self.store.add(m1)
