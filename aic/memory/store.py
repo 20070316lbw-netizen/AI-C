@@ -47,6 +47,29 @@ class MemoryStore:
             ''')
             self.conn.commit()
 
+    def _validate_order_by(self, order_by: str) -> bool:
+        valid_columns = {
+            'id', 'content', 'type', 'weight', 'created_at', 'updated_at',
+            'source', 'session_id', 'is_archived', 'is_processed', 'superseded_by',
+            'meta', 'version', 'last_accessed_at'
+        }
+        parts = order_by.split(',')
+        for part in parts:
+            part = part.strip()
+            if not part:
+                return False
+            tokens = part.split()
+            if len(tokens) > 2:
+                return False
+            col = tokens[0].lower()
+            if col not in valid_columns:
+                return False
+            if len(tokens) == 2:
+                direction = tokens[1].upper()
+                if direction not in {'ASC', 'DESC'}:
+                    return False
+        return True
+
     def _row_to_memory(self, row: sqlite3.Row) -> Memory:
         d = dict(row)
         return Memory(**d)
@@ -130,7 +153,8 @@ class MemoryStore:
             cursor = self.conn.cursor()
             query = 'SELECT * FROM memories WHERE type = ? AND is_archived = 0'
             if order_by:
-                # order_by is safe in this context, just append it
+                if not self._validate_order_by(order_by):
+                    raise ValueError(f"Invalid order_by clause: {order_by}")
                 query += f' ORDER BY {order_by}'
 
             cursor.execute(query, (type,))
