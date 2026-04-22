@@ -115,6 +115,69 @@ class MemoryStore:
 
             return mems
 
+    def archive(self, id: str) -> None:
+        with self.lock:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE memories
+                SET is_archived = 1
+                WHERE id = ?
+            ''', (id,))
+            self.conn.commit()
+
+    def list_by_type(self, type: str, order_by: Optional[str] = None) -> List[Memory]:
+        with self.lock:
+            cursor = self.conn.cursor()
+            query = 'SELECT * FROM memories WHERE type = ? AND is_archived = 0'
+            if order_by:
+                # order_by is safe in this context, just append it
+                query += f' ORDER BY {order_by}'
+
+            cursor.execute(query, (type,))
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+
+            now = time.time()
+            mems = []
+            for row in rows:
+                mem = self._row_to_memory(row)
+                mem.last_accessed_at = now
+                mems.append(mem)
+
+            ids = [(now, mem.id) for mem in mems]
+            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
+            self.conn.commit()
+
+            return mems
+
+    def list_unprocessed(self, exclude_session_id: Optional[str] = None) -> List[Memory]:
+        with self.lock:
+            cursor = self.conn.cursor()
+            query = 'SELECT * FROM memories WHERE is_processed = 0 AND is_archived = 0'
+            params = []
+            if exclude_session_id:
+                query += ' AND (session_id != ? OR session_id IS NULL)'
+                params.append(exclude_session_id)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+
+            now = time.time()
+            mems = []
+            for row in rows:
+                mem = self._row_to_memory(row)
+                mem.last_accessed_at = now
+                mems.append(mem)
+
+            ids = [(now, mem.id) for mem in mems]
+            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
+            self.conn.commit()
+
+            return mems
+
     def soft_delete(self, id: str, superseded_by: Optional[str] = None) -> None:
         if id == superseded_by:
             raise ValueError("superseded_by cannot be the same as id")

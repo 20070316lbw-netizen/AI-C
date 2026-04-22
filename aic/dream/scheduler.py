@@ -144,7 +144,7 @@ class DreamScheduler:
             )
             result = consolidator.run()
 
-            print(f"✅ Dream 完成 | 合并 {result.merged_count} 条 · 归档 {result.archived_count} 条 · 新增 {result.added_count} 条 · 冲突解决 {result.resolved_conflicts} 个")
+            print(f"✅ Dream 完成 | 合并 {result.merged} 条 · 归档 {result.archived} 条 · 新增 {result.added} 条 · 冲突解决 {result.conflicts_resolved} 个")
 
         except Exception as e:
             self.kairos_log("dream_error", self.session_id, {"error": str(e)})

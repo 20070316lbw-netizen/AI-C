@@ -148,6 +148,7 @@ class TestMemoryExtractor(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "content": [{
+                "type": "text",
                 "text": '[{"type": "user", "content": "claude fact"}]'
             }]
         }

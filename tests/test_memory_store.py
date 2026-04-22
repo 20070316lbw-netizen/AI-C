@@ -150,5 +150,30 @@ class TestMemoryStore(unittest.TestCase):
         self.assertIsNotNone(retrieved2.last_accessed_at)
         self.assertGreaterEqual(retrieved2.last_accessed_at, retrieved1.last_accessed_at)
 
+    def test_list_by_type(self):
+        mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
+        mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s1")
+        mem3 = Memory(id="3", content="c", type="feedback", source="test", session_id="s1")
+        self.store.add(mem1)
+        self.store.add(mem2)
+        self.store.add(mem3)
+        self.store.archive("2")
+        res = self.store.list_by_type("user")
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].id, "1")
+    def test_list_unprocessed(self):
+        mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
+        mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
+        mem3 = Memory(id="3", content="c", type="user", source="test", session_id="s1")
+        self.store.add(mem1)
+        self.store.add(mem2)
+        self.store.add(mem3)
+        self.store.mark_processed(["3"])
+        res = self.store.list_unprocessed(exclude_session_id="s1")
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].id, "2")
+        res_all = self.store.list_unprocessed()
+        self.assertEqual(len(res_all), 2)
+
 if __name__ == '__main__':
     unittest.main()

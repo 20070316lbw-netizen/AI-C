@@ -132,7 +132,7 @@ class TestDreamScheduler(unittest.TestCase):
     @patch("aic.dream.scheduler.Consolidator")
     def test_run_force_true(self, MockConsolidator):
         mock_consolidator = MockConsolidator.return_value
-        mock_consolidator.run.return_value = DreamResult(merged_count=5, archived_count=8, added_count=2, resolved_conflicts=3)
+        mock_consolidator.run.return_value = DreamResult(merged=5, archived=8, added=2, conflicts_resolved=3)
 
         self.store.count_unprocessed.return_value = 34
 
@@ -163,3 +163,75 @@ class TestDreamScheduler(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestDreamAgent(unittest.TestCase):
+    def setUp(self):
+        self.store = MagicMock()
+        from aic.dream.agent import DreamAgent
+        self.agent = DreamAgent(self.store, "test")
+
+    def test_add_memory_dedup(self):
+        # mock existing
+        mock_mem = MagicMock()
+        mock_mem.id = "mock_hash"
+        self.store.get.return_value = mock_mem
+
+        mem_id = self.agent.add_memory("test content", "user")
+        self.assertEqual(mem_id, "mock_hash")
+        self.store.add.assert_not_called()
+
+    def test_soft_delete_memory(self):
+        # Mock target doesn't exist
+        self.store.get.side_effect = lambda id: None
+        self.assertFalse(self.agent.soft_delete_memory("a", "b"))
+
+        # Mock valid soft delete
+        mock_target = MagicMock()
+        mock_mem = MagicMock()
+        mock_mem.is_archived = False
+        self.store.get.side_effect = lambda id: mock_target if id == "b" else mock_mem
+
+        self.assertTrue(self.agent.soft_delete_memory("a", "b"))
+        self.store.soft_delete.assert_called_with("a", "b")
+
+class TestConsolidator(unittest.TestCase):
+    def setUp(self):
+        self.store = MagicMock()
+        self.lock = MagicMock()
+        self.config = {"provider": "claude", "claude": {"model": "test"}, "dream": {"max_memories_per_type": 1}}
+        self.kairos_log = MagicMock()
+        from aic.dream.consolidator import Consolidator
+        self.consolidator = Consolidator(self.store, self.lock, self.config, self.kairos_log)
+
+    @patch('aic.dream.consolidator.complete')
+    def test_phase_execution_and_resume(self, mock_complete):
+        # start from phase 2
+        self.lock.get_state.return_value = {"phase": 1, "orient_data": {"summary": "test", "conflicts": []}}
+
+        mock_complete.return_value = {"content": "", "tool_calls": []}
+
+        res = self.consolidator.run()
+
+        # lock should have updated states for phases 2, 3, 4
+        self.lock.update_state.assert_any_call(phase=2, orient_data=self.consolidator._orient_result)
+        self.lock.update_state.assert_any_call(phase=3, orient_data=self.consolidator._orient_result)
+        self.lock.update_state.assert_any_call(phase=4, orient_data=self.consolidator._orient_result)
+
+    def test_phase4_archiving(self):
+        self.lock.get_state.return_value = {"phase": 3, "orient_data": {}}
+
+        mock_mem1 = MagicMock()
+        mock_mem1.id = "id1"
+        mock_mem2 = MagicMock()
+        mock_mem2.id = "id2"
+
+        # return excess for user
+        def mock_list_by_type(t, order_by=None):
+            if t == "user": return [mock_mem1, mock_mem2]
+            return []
+        self.store.list_by_type.side_effect = mock_list_by_type
+
+        self.consolidator.run()
+
+        # max is 1, so excess should be archived
+        self.store.archive.assert_called_with("id2")
