@@ -161,6 +161,24 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+    def test_list_by_type_sql_injection(self):
+        # valid order_by
+        res = self.store.list_by_type("user", order_by="weight ASC, updated_at DESC")
+        self.assertEqual(len(res), 0) # store is empty
+
+        # malicious order_by strings
+        malicious_inputs = [
+            "; DROP TABLE memories;",
+            "weight ASC; DROP TABLE memories;",
+            "id, content UNION SELECT * FROM memories",
+            "invalid_column ASC"
+        ]
+
+        for bad_input in malicious_inputs:
+            with self.assertRaises(ValueError):
+                self.store.list_by_type("user", order_by=bad_input)
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")

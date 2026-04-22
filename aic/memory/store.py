@@ -126,11 +126,27 @@ class MemoryStore:
             self.conn.commit()
 
     def list_by_type(self, type: str, order_by: Optional[str] = None) -> List[Memory]:
+        if order_by:
+            allowed_columns = {
+                'id', 'content', 'type', 'weight', 'created_at', 'updated_at',
+                'source', 'session_id', 'is_archived', 'is_processed',
+                'superseded_by', 'meta', 'version', 'last_accessed_at'
+            }
+            parts = [p.strip() for p in order_by.split(',')]
+            for part in parts:
+                tokens = part.split()
+                if not tokens or len(tokens) > 2:
+                    raise ValueError(f"Invalid order_by clause: {order_by}")
+                col = tokens[0].lower()
+                if col not in allowed_columns:
+                    raise ValueError(f"Invalid column in order_by: {col}")
+                if len(tokens) == 2 and tokens[1].upper() not in ('ASC', 'DESC'):
+                    raise ValueError(f"Invalid direction in order_by: {tokens[1]}")
+
         with self.lock:
             cursor = self.conn.cursor()
             query = 'SELECT * FROM memories WHERE type = ? AND is_archived = 0'
             if order_by:
-                # order_by is safe in this context, just append it
                 query += f' ORDER BY {order_by}'
 
             cursor.execute(query, (type,))
