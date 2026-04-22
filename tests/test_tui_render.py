@@ -87,6 +87,12 @@ class TestTUIRenderStatus(unittest.TestCase):
         # Verify the renderer's status_renderable property was updated
         self.assertEqual(self.renderer.status_renderable, table_instance)
 
+    def test_render_status_calls_update_layout(self):
+        """Test that render_status calls _update_layout."""
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout:
+            self.renderer.render_status("openai", "gpt-4", 1500)
+            mock_update_layout.assert_called_once()
+
     def test_render_status_with_large_tokens(self):
         """Test that tokens are correctly formatted with commas for large numbers."""
         provider = "anthropic"
@@ -101,6 +107,41 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][model: claude-3][/dim]",
             "[dim][tokens: 1,234,567][/dim]"
         )
+
+    def test_clear_right(self):
+        """Test that clear_right sets right_renderable to None and updates layout."""
+        self.renderer.right_renderable = "some_renderable"
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout:
+            self.renderer.clear_right()
+            self.assertIsNone(self.renderer.right_renderable)
+            mock_update_layout.assert_called_once()
+
+    def test_render_diff(self):
+        """Test that render_diff computes diff properly, sets right_renderable and updates layout."""
+        # Provide sample code to diff
+        before = "line1\nline2\nline3\n"
+        after = "line1\nline2 changed\nline3\nline4\n"
+        filepath = "test.py"
+
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout, \
+             patch('aic.tui.Panel') as mock_panel, \
+             patch('aic.tui.Text') as mock_text_cls:
+
+            mock_text_instance = mock_text_cls.return_value
+            self.renderer.render_diff(filepath, before, after)
+
+            # Text was created and appends were called
+            mock_text_cls.assert_called_once()
+
+            # additions=2 (line2 changed, line4), deletions=1 (line2)
+            mock_text_instance.append.assert_any_call("\n✓ 2 additions, 1 deletions", style="dim")
+
+            # Panel was created with the text and assigned to right_renderable
+            mock_panel.assert_called_once_with(mock_text_instance, title="Diff: test.py", border_style="yellow")
+            self.assertEqual(self.renderer.right_renderable, mock_panel.return_value)
+
+            # Layout was updated
+            mock_update_layout.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
