@@ -102,5 +102,15 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][tokens: 1,234,567][/dim]"
         )
 
+    def test_render_status_calls_update_layout(self):
+        """Test that render_status correctly calls _update_layout."""
+        provider = "openai"
+        model = "gpt-4"
+        tokens = 1500
+
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout:
+            self.renderer.render_status(provider, model, tokens)
+            mock_update_layout.assert_called_once()
+
 if __name__ == '__main__':
     unittest.main()
