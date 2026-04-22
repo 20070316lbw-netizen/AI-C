@@ -38,7 +38,7 @@ class TestDreamLock(unittest.TestCase):
         self.assertTrue(lock.acquire(self.session_id))
 
         # Another process tries to acquire
-        with patch('os.kill') as mock_kill:
+        with patch('aic.dream.lock.os.kill') as mock_kill:
             # Simulate os.kill doing nothing (process is alive)
             mock_kill.return_value = None
 
@@ -60,7 +60,7 @@ class TestDreamLock(unittest.TestCase):
         lock = DreamLock(self.lock_path)
         self.assertTrue(lock.acquire(self.session_id))
 
-        with patch('os.kill') as mock_kill:
+        with patch('aic.dream.lock.os.kill') as mock_kill:
             # Simulate process not found
             mock_kill.side_effect = ProcessLookupError()
 
@@ -80,7 +80,7 @@ class TestDreamLock(unittest.TestCase):
         lock = DreamLock(self.lock_path)
         self.assertTrue(lock.acquire(self.session_id))
 
-        with patch('os.kill') as mock_kill:
+        with patch('aic.dream.lock.os.kill') as mock_kill:
             # Simulate process exists but no permission
             mock_kill.side_effect = PermissionError()
 
@@ -96,9 +96,41 @@ class TestDreamLock(unittest.TestCase):
         lock = DreamLock(self.lock_path)
         self.assertTrue(lock.acquire(self.session_id))
 
-        with patch('os.kill') as mock_kill:
+        with patch('aic.dream.lock.os.kill') as mock_kill:
             # Simulate process exists but no permission
             mock_kill.side_effect = PermissionError()
+
+            state = lock.get_state()
+            state["pid"] = 99999
+            # Make it stale
+            state["started_at"] = time.time() - (lock.lock_timeout_h * 3600) - 10
+            self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+            lock2 = DreamLock(self.lock_path)
+            self.assertTrue(lock2.acquire("new_session"))
+
+    def test_get_state_corrupted_json(self):
+        """测试 get_state() 遇到无效 JSON 时返回空字典。"""
+        self.lock_path.write_text("not a valid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        self.assertEqual(lock.get_state(), {})
+
+    def test_acquire_missing_pid(self):
+        """测试锁文件存在，但是没有 pid 键时，acquire() 应该覆盖并返回 True。"""
+        self.lock_path.write_text(json.dumps({"phase": 0}), encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+        state = lock.get_state()
+        self.assertEqual(state["session_id"], self.session_id)
+
+    def test_acquire_existing_lock_active_but_stale(self):
+        """测试进程活跃但超时的情况，acquire()应该返回True。"""
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        with patch('aic.dream.lock.os.kill') as mock_kill:
+            # Simulate process exists
+            mock_kill.return_value = None
 
             state = lock.get_state()
             state["pid"] = 99999
@@ -137,6 +169,13 @@ class TestDreamLock(unittest.TestCase):
         self.lock_path.write_text(json.dumps(state), encoding="utf-8")
 
         self.assertTrue(lock.is_stale())
+
+    def test_update_state_corrupted_file(self):
+        """测试 update_state() 遇到损坏的锁文件时应该抛出 RuntimeError。"""
+        self.lock_path.write_text("not a valid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file is corrupted or empty"):
+            lock.update_state(1)
 
     def test_update_state(self):
         """测试 update_state 更新 phase 和 orient_data。"""
