@@ -56,6 +56,27 @@ class TestDreamScheduler(unittest.TestCase):
             f.write(json.dumps({"ts": ts, "event": event}) + "\n")
         return ts
 
+    def test_last_dream_ts_errors(self):
+        # 1. Missing log dir
+        with patch("os.path.exists", side_effect=lambda path: False if path == self.log_dir else os.path.exists(path)):
+            self.assertIsNone(self.scheduler._last_dream_ts())
+
+        # 2. File with empty line and invalid JSON
+        today = datetime.today()
+        date_str = today.strftime("%Y-%m-%d")
+        log_path = os.path.join(self.log_dir, f"{date_str}.jsonl")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("\n")  # Empty line
+            f.write("invalid json {]\n")  # JSON decode error
+            f.write('{"event": "dream_done", "ts": 12345.0}\n')
+
+        self.assertEqual(self.scheduler._last_dream_ts(), 12345.0)
+
+        # 3. File reading exception
+        with patch("builtins.open", side_effect=Exception("Read error")):
+            # Should catch the exception and return None since no valid lines were read
+            self.assertIsNone(self.scheduler._last_dream_ts())
+
     def test_gate1_unprocessed(self):
         # Fail Gate 1
         self.store.count_unprocessed.return_value = 5
@@ -118,6 +139,21 @@ class TestDreamScheduler(unittest.TestCase):
             mock_kill.side_effect = ProcessLookupError()
             self.assertTrue(self.scheduler.should_run())
 
+    def test_should_run_permission_error(self):
+        self.store.count_unprocessed.return_value = 15
+        self.lock.acquire("another_session")
+
+        with patch('os.kill') as mock_kill:
+            mock_kill.side_effect = PermissionError()
+
+            # Not stale -> should not run
+            with patch.object(self.lock, 'is_stale', return_value=False):
+                self.assertFalse(self.scheduler.should_run())
+
+            # Stale -> should run
+            with patch.object(self.lock, 'is_stale', return_value=True):
+                self.assertTrue(self.scheduler.should_run())
+
     @patch("subprocess.Popen")
     def test_run_force_false(self, mock_popen):
         self.store.count_unprocessed.return_value = 15
@@ -128,6 +164,16 @@ class TestDreamScheduler(unittest.TestCase):
         args, kwargs = mock_popen.call_args
         self.assertEqual(args[0], ["aic-dream", "--session", self.session_id])
         self.assertTrue(kwargs["start_new_session"])
+
+    @patch("subprocess.Popen")
+    def test_run_force_false_skipped(self, mock_popen):
+        # Fail should_run (Gate 1)
+        self.store.count_unprocessed.return_value = 5
+
+        self.scheduler.run(force=False)
+
+        mock_popen.assert_not_called()
+        self.kairos_log.assert_called_once_with("dream_skipped", self.session_id, {"reason": "gate_check_failed"})
 
     @patch("aic.dream.scheduler.Consolidator")
     def test_run_force_true(self, MockConsolidator):
@@ -146,6 +192,57 @@ class TestDreamScheduler(unittest.TestCase):
         mock_consolidator.run.assert_called_once()
 
         # Lock should be released
+        self.assertFalse(self.lock_path.exists())
+
+    @patch("aic.dream.scheduler.Consolidator")
+    def test_run_tracking_log(self, MockConsolidator):
+        mock_consolidator = MockConsolidator.return_value
+        mock_consolidator.run.return_value = DreamResult(merged=5, archived=8, added=2, conflicts_resolved=3)
+
+        # We just invoke tracking_log manually after the run call to verify the branches.
+
+        # Bypass gates
+        self.store.count_unprocessed.return_value = 0
+
+        self.scheduler.run(force=True)
+
+        # Get the tracking_log function passed to Consolidator
+        kwargs = MockConsolidator.call_args[1]
+        tracking_log = kwargs['kairos_log']
+
+        # Simulate phase start logs
+        for phase in [1, 2, 3, 4]:
+            tracking_log("dream_phase_start", self.session_id, {"phase": phase})
+
+        # Simulate phase done logs
+        with patch.object(self.lock, 'get_state', return_value={"orient_data": {"conflicts": ["c1", "c2"]}}):
+            tracking_log("dream_phase_done", self.session_id, {"phase": 1})
+
+        for phase in [2, 3]:
+            tracking_log("dream_phase_done", self.session_id, {"phase": phase})
+
+        # Verify kairos_log was called for all these tracking logs
+        # 1 start + 1 done + 4 phase start + 3 phase done = 9 total
+        self.assertEqual(self.kairos_log.call_count, 9)
+
+    @patch("aic.dream.scheduler.Consolidator")
+    def test_run_exception(self, MockConsolidator):
+        mock_consolidator = MockConsolidator.return_value
+        mock_consolidator.run.side_effect = Exception("Test Consolidator Error")
+
+        # Bypass gates
+        self.store.count_unprocessed.return_value = 0
+
+        # Run and check that the exception propagates
+        with self.assertRaises(Exception) as context:
+            self.scheduler.run(force=True)
+
+        self.assertEqual(str(context.exception), "Test Consolidator Error")
+
+        # Verify kairos_log was called with dream_error
+        self.kairos_log.assert_any_call("dream_error", self.session_id, {"error": "Test Consolidator Error"})
+
+        # Lock should be released via finally block
         self.assertFalse(self.lock_path.exists())
 
     @patch("aic.dream.scheduler.Consolidator")
