@@ -76,7 +76,3 @@ class MCPLoader:
                 print(f"[MCP] server '{name}' 启动失败: {e}")
 
         return success_count
-
-    def reload(self) -> int:
-        self.registry.shutdown_all()
-        return self.load()

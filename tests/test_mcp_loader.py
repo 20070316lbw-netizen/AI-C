@@ -116,16 +116,5 @@ class TestMCPLoader(unittest.TestCase):
         self.assertEqual(args.env["VAR2"], "${MISSING}/path")
         self.assertEqual(args.env["VAR3"], "normal")
 
-    def test_reload(self):
-        self.write_config({
-            "mcpServers": {
-                "server1": {"command": "cmd"}
-            }
-        })
-
-        count = self.loader.reload()
-        self.assertEqual(count, 1)
-        self.registry.shutdown_all.assert_called_once()
-
 if __name__ == "__main__":
     unittest.main()
