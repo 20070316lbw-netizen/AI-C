@@ -161,6 +161,40 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+    def test_list_by_type_order_by_valid(self):
+        mem1 = Memory(id="1", content="a", type="user", weight=1.0)
+        mem2 = Memory(id="2", content="b", type="user", weight=2.0)
+        mem3 = Memory(id="3", content="c", type="user", weight=1.5)
+        self.store.add(mem1)
+        self.store.add(mem2)
+        self.store.add(mem3)
+
+        res = self.store.list_by_type("user", order_by="weight DESC")
+        self.assertEqual(len(res), 3)
+        self.assertEqual(res[0].id, "2")
+        self.assertEqual(res[1].id, "3")
+        self.assertEqual(res[2].id, "1")
+
+        res_asc = self.store.list_by_type("user", order_by="weight ASC")
+        self.assertEqual(res_asc[0].id, "1")
+        self.assertEqual(res_asc[1].id, "3")
+        self.assertEqual(res_asc[2].id, "2")
+
+        # Test multiple columns
+        res_mult = self.store.list_by_type("user", order_by="weight DESC, id ASC")
+        self.assertEqual(len(res_mult), 3)
+
+    def test_list_by_type_order_by_sql_injection(self):
+        mem1 = Memory(id="1", content="a", type="user", weight=1.0)
+        self.store.add(mem1)
+
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="weight; DROP TABLE memories")
+
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="invalid_column ASC")
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
