@@ -181,18 +181,38 @@ class TestDreamAgent(unittest.TestCase):
         self.store.add.assert_not_called()
 
     def test_soft_delete_memory(self):
-        # Mock target doesn't exist
+        # 1. Mock superseded_by (target) doesn't exist
         self.store.get.side_effect = lambda id: None
         self.assertFalse(self.agent.soft_delete_memory("a", "b"))
 
-        # Mock valid soft delete
+        # 2. Mock memory to delete (id) doesn't exist
         mock_target = MagicMock()
+        self.store.get.side_effect = lambda id: mock_target if id == "b" else None
+        self.assertFalse(self.agent.soft_delete_memory("a", "b"))
+
+        # 3. Mock already archived with matching superseded_by (idempotent)
+        mock_mem = MagicMock()
+        mock_mem.is_archived = True
+        mock_mem.superseded_by = "b"
+        self.store.get.side_effect = lambda id: mock_target if id == "b" else mock_mem
+        self.assertTrue(self.agent.soft_delete_memory("a", "b"))
+        self.store.soft_delete.assert_not_called()
+
+        # 4. Mock ValueError raised by store.soft_delete
         mock_mem = MagicMock()
         mock_mem.is_archived = False
         self.store.get.side_effect = lambda id: mock_target if id == "b" else mock_mem
-
-        self.assertTrue(self.agent.soft_delete_memory("a", "b"))
+        self.store.soft_delete.side_effect = ValueError("test")
+        self.assertFalse(self.agent.soft_delete_memory("a", "b"))
         self.store.soft_delete.assert_called_with("a", "b")
+
+        # Reset side_effect for next check
+        self.store.soft_delete.side_effect = None
+
+        # 5. Mock valid soft delete (happy path)
+        self.assertTrue(self.agent.soft_delete_memory("a", "b"))
+        # Called again without error
+        self.assertEqual(self.store.soft_delete.call_count, 2)
 
 class TestConsolidator(unittest.TestCase):
     def setUp(self):
