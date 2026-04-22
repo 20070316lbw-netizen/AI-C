@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 aic = "aic.main:main"
+aic-dream = "aic.dream.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["aic"]
