@@ -19,6 +19,36 @@ class TestDreamLock(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
+    def test_get_state_file_not_exists(self):
+        """测试文件不存在时 get_state 返回空字典。"""
+        lock = DreamLock(self.lock_path)
+        self.assertFalse(self.lock_path.exists())
+        self.assertEqual(lock.get_state(), {})
+
+    def test_get_state_valid_json(self):
+        """测试存在有效 JSON 文件时 get_state 正确解析并返回字典。"""
+        lock = DreamLock(self.lock_path)
+        test_state = {"pid": 123, "phase": 1, "session_id": "test"}
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path.write_text(json.dumps(test_state), encoding="utf-8")
+        self.assertEqual(lock.get_state(), test_state)
+
+    def test_get_state_invalid_json(self):
+        """测试文件包含无效 JSON 时 get_state 返回空字典。"""
+        lock = DreamLock(self.lock_path)
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path.write_text("invalid json content", encoding="utf-8")
+        self.assertEqual(lock.get_state(), {})
+
+    def test_get_state_read_exception(self):
+        """测试读取文件抛出异常时 get_state 返回空字典。"""
+        lock = DreamLock(self.lock_path)
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path.write_text('{"key": "value"}', encoding="utf-8")
+
+        with patch.object(Path, 'read_text', side_effect=PermissionError):
+            self.assertEqual(lock.get_state(), {})
+
     def test_acquire_new_lock(self):
         """测试锁不存在时，acquire() 应该成功创建锁并返回 True。"""
         lock = DreamLock(self.lock_path)
