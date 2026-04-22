@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 import os
+import time
 from dataclasses import asdict
 from typing import Optional, List
 
@@ -14,7 +15,7 @@ class MemoryStore:
             self.db_path = os.path.expanduser(db_path)
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
         self.conn.row_factory = sqlite3.Row
         self.lock = threading.Lock()
         self._init_db()
@@ -36,7 +37,8 @@ class MemoryStore:
                     is_processed INTEGER DEFAULT 0,
                     superseded_by TEXT,
                     meta TEXT,
-                    version INTEGER DEFAULT 1
+                    version INTEGER DEFAULT 1,
+                    last_accessed_at REAL
                 )
             ''')
             cursor.execute('''
@@ -70,7 +72,12 @@ class MemoryStore:
             cursor.execute('SELECT * FROM memories WHERE id = ?', (id,))
             row = cursor.fetchone()
             if row:
-                return self._row_to_memory(row)
+                now = time.time()
+                cursor.execute('UPDATE memories SET last_accessed_at = ? WHERE id = ?', (now, id))
+                self.conn.commit()
+                mem = self._row_to_memory(row)
+                mem.last_accessed_at = now
+                return mem
             return None
 
     def list(self, type: Optional[MemoryType] = None, include_archived: bool = False) -> List[Memory]:
@@ -91,7 +98,22 @@ class MemoryStore:
                 query += ' WHERE ' + ' AND '.join(conditions)
 
             cursor.execute(query, tuple(params))
-            return [self._row_to_memory(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+
+            now = time.time()
+            mems = []
+            for row in rows:
+                mem = self._row_to_memory(row)
+                mem.last_accessed_at = now
+                mems.append(mem)
+
+            ids = [(now, mem.id) for mem in mems]
+            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
+            self.conn.commit()
+
+            return mems
 
     def soft_delete(self, id: str, superseded_by: Optional[str] = None) -> None:
         if id == superseded_by:
@@ -151,4 +173,19 @@ class MemoryStore:
                 SELECT * FROM memories
                 WHERE id LIKE ?
             ''', (f"{prefix}%",))
-            return [self._row_to_memory(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+
+            now = time.time()
+            mems = []
+            for row in rows:
+                mem = self._row_to_memory(row)
+                mem.last_accessed_at = now
+                mems.append(mem)
+
+            ids = [(now, mem.id) for mem in mems]
+            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
+            self.conn.commit()
+
+            return mems

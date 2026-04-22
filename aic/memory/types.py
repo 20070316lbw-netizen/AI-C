@@ -20,3 +20,4 @@ class Memory:
     superseded_by: Optional[str] = None # 指向替代条目的 id
     meta: Optional[str] = None          # JSON 扩展字段，供 Dream 写入合并来源等
     version: int = 1                    # schema 版本，供未来迁移用
+    last_accessed_at: Optional[float] = None # 最近访问时间戳，预留给遗忘机制
