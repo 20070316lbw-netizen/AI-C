@@ -102,5 +102,36 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][tokens: 1,234,567][/dim]"
         )
 
+
+    def test_render_status_handles_zero_tokens(self):
+        """Test that render_status correctly handles zero tokens."""
+        provider = "local"
+        model = "llama-3"
+        tokens = 0
+
+        self.renderer.render_status(provider, model, tokens)
+
+        table_instance = self.MockTable.return_value
+        table_instance.add_row.assert_called_once_with(
+            "[dim][provider: local][/dim]",
+            "[dim][model: llama-3][/dim]",
+            "[dim][tokens: 0][/dim]"
+        )
+
+    def test_render_status_missing_fields(self):
+        """Test that render_status correctly handles empty strings for provider and model."""
+        provider = ""
+        model = ""
+        tokens = 100
+
+        self.renderer.render_status(provider, model, tokens)
+
+        table_instance = self.MockTable.return_value
+        table_instance.add_row.assert_called_once_with(
+            "[dim][provider: ][/dim]",
+            "[dim][model: ][/dim]",
+            "[dim][tokens: 100][/dim]"
+        )
+
 if __name__ == '__main__':
     unittest.main()
