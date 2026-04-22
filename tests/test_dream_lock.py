@@ -27,10 +27,44 @@ class TestDreamLock(unittest.TestCase):
 
         state = lock.get_state()
         self.assertEqual(state["session_id"], self.session_id)
-        self.assertEqual(state["phase"], 0)
+
+    def test_acquire_existing_lock_no_pid(self):
+        """测试锁存在但没有 pid 时，acquire() 应该接管并返回 True。"""
+        self.lock_path.write_text(json.dumps({"some_key": "some_value"}), encoding="utf-8")
+
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        state = lock.get_state()
+        self.assertEqual(state["session_id"], self.session_id)
         self.assertEqual(state["pid"], os.getpid())
-        self.assertIn("started_at", state)
-        self.assertEqual(state["orient_data"], {})
+
+    def test_acquire_existing_lock_active_but_stale(self):
+        """测试锁存在、进程活跃但已经超时的情况，acquire() 应该返回 True。"""
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        with patch('os.kill') as mock_kill:
+            # Simulate os.kill doing nothing (process is alive)
+            mock_kill.return_value = None
+
+            # Change PID in lock file to simulate another process
+            state = lock.get_state()
+            state["pid"] = 99999
+            # Make it stale
+            state["started_at"] = time.time() - (lock.lock_timeout_h * 3600) - 10
+            self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+            lock2 = DreamLock(self.lock_path)
+            self.assertTrue(lock2.acquire("new_session"))
+
+            mock_kill.assert_called_once_with(99999, 0)
+
+            new_state = lock2.get_state()
+            self.assertEqual(new_state["phase"], 0)
+            self.assertEqual(new_state["pid"], os.getpid())
+            self.assertIn("started_at", new_state)
+            self.assertEqual(new_state["orient_data"], {})
 
     def test_acquire_existing_lock_active(self):
         """测试锁存在且进程活跃时，acquire() 应该返回 False。"""
@@ -138,11 +172,29 @@ class TestDreamLock(unittest.TestCase):
 
         self.assertTrue(lock.is_stale())
 
+    def test_is_stale_corrupted(self):
+        """测试 is_stale() 处理损坏文件时返回 False。"""
+        self.lock_path.write_text("invalid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        self.assertFalse(lock.is_stale())
+
+    def test_is_stale_no_started_at(self):
+        """测试 is_stale() 处理缺少 started_at 的情况。"""
+        self.lock_path.write_text(json.dumps({"pid": 123}), encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        # Should default to time.time() and return False
+        self.assertFalse(lock.is_stale())
+
     def test_update_state(self):
         """测试 update_state 更新 phase 和 orient_data。"""
         lock = DreamLock(self.lock_path)
 
         with self.assertRaises(RuntimeError):
+            lock.update_state(1)
+
+        # Test corrupted lock file
+        self.lock_path.write_text("invalid json", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "corrupted or empty"):
             lock.update_state(1)
 
         self.assertTrue(lock.acquire(self.session_id))
