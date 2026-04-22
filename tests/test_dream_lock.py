@@ -30,6 +30,7 @@ class TestDreamLock(unittest.TestCase):
         self.assertEqual(state["phase"], 0)
         self.assertEqual(state["pid"], os.getpid())
         self.assertIn("started_at", state)
+        self.assertEqual(state["orient_data"], {})
 
     def test_acquire_existing_lock_active(self):
         """测试锁存在且进程活跃时，acquire() 应该返回 False。"""
@@ -137,24 +138,37 @@ class TestDreamLock(unittest.TestCase):
 
         self.assertTrue(lock.is_stale())
 
-    def test_update_phase(self):
-        """测试 update_phase 原地更新 phase，且无锁时抛错。"""
+    def test_update_state(self):
+        """测试 update_state 更新 phase 和 orient_data。"""
         lock = DreamLock(self.lock_path)
 
         with self.assertRaises(RuntimeError):
-            lock.update_phase(1)
+            lock.update_state(1)
 
         self.assertTrue(lock.acquire(self.session_id))
         state = lock.get_state()
         self.assertEqual(state["phase"], 0)
+        self.assertEqual(state["orient_data"], {})
         original_started_at = state["started_at"]
 
-        lock.update_phase(5)
+        # Test update phase only
+        lock.update_state(5)
 
         new_state = lock.get_state()
         self.assertEqual(new_state["phase"], 5)
+        self.assertEqual(new_state["orient_data"], {}) # Should remain unmodified
         self.assertEqual(new_state["session_id"], self.session_id)
         self.assertEqual(new_state["started_at"], original_started_at)
+
+        # Test update phase and orient_data
+        orient_data = {"key": "value"}
+        lock.update_state(6, orient_data)
+
+        final_state = lock.get_state()
+        self.assertEqual(final_state["phase"], 6)
+        self.assertEqual(final_state["orient_data"], orient_data)
+        self.assertEqual(final_state["session_id"], self.session_id)
+        self.assertEqual(final_state["started_at"], original_started_at)
 
     def test_release(self):
         """测试 release() 删除锁文件，忽略无文件错误。"""

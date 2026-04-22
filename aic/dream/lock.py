@@ -72,7 +72,8 @@ class DreamLock:
             "pid": os.getpid(),
             "phase": 0,
             "started_at": time.time(),
-            "session_id": session_id
+            "session_id": session_id,
+            "orient_data": {}
         }
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         self.lock_path.write_text(json.dumps(state), encoding="utf-8")
@@ -85,14 +86,17 @@ class DreamLock:
         except FileNotFoundError:
             pass
 
-    def update_phase(self, phase: int) -> None:
-        """原地更新 phase 字段，保留其他字段不变"""
+    def update_state(self, phase: int, orient_data: dict = None) -> None:
+        """读取当前内容 → 更新 phase 和 orient_data → 写回"""
         if not self.lock_path.exists():
-            raise RuntimeError("Cannot update phase: lock file does not exist")
+            raise RuntimeError("Cannot update state: lock file does not exist")
 
         state = self.get_state()
         if not state:
-            raise RuntimeError("Cannot update phase: lock file is corrupted or empty")
+            raise RuntimeError("Cannot update state: lock file is corrupted or empty")
 
         state["phase"] = phase
+        if orient_data is not None:
+            state["orient_data"] = orient_data
+
         self.lock_path.write_text(json.dumps(state), encoding="utf-8")
