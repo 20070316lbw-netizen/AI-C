@@ -69,6 +69,37 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
                     continue
                 filepath = parts[1]
                 p = Path(filepath)
+
+                if p.is_dir():
+                    added = 0
+                    skipped = 0
+                    for child in sorted(p.rglob("*")):
+                        if not child.is_file():
+                            continue
+                        # Skip hidden files and common noise directories
+                        if any(part.startswith(".") for part in child.parts):
+                            continue
+                        if any(part in ("__pycache__", "node_modules", ".venv", ".git") for part in child.parts):
+                            continue
+                        # Skip binary files
+                        try:
+                            header = child.read_bytes()[:1024]
+                            if b'\0' in header:
+                                skipped += 1
+                                continue
+                            content = child.read_text(encoding="utf-8")
+                            session.add_context_file(str(child))
+                            added += 1
+                        except Exception:
+                            skipped += 1
+                            continue
+                        # Hard cap: stop at 20 files to prevent token overflow
+                        if added >= 20:
+                            print_warning(f"File limit reached (20). Use /add on subdirectories for more.")
+                            break
+                    print_ok(f"Added {added} files from {filepath}" + (f" ({skipped} skipped)" if skipped else ""))
+                    continue
+
                 if not p.is_file():
                     print_error(f"File not found: {filepath}")
                     continue
@@ -231,7 +262,7 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
 
             elif cmd == "/help":
                 print("Available commands:")
-                print("  /add <file> - Add a file to the context")
+                print("  /add <file|dir> - Add a file or directory (max 20 files) to the context")
                 print("  /files      - List loaded context files")
                 print("  /clear      - Clear conversation history")
                 print("  /reset      - Clear history and context files")
