@@ -41,10 +41,14 @@ class TestTUIRenderStatus(unittest.TestCase):
         self.table_patcher = patch('aic.tui.Table')
         self.layout_patcher = patch('aic.tui.Layout')
         self.console_patcher = patch('aic.tui.Console')
+        self.panel_patcher = patch('aic.tui.Panel')
+        self.text_patcher = patch('aic.tui.Text')
 
         self.MockTable = self.table_patcher.start()
         self.MockLayout = self.layout_patcher.start()
         self.MockConsole = self.console_patcher.start()
+        self.MockPanel = self.panel_patcher.start()
+        self.MockText = self.text_patcher.start()
 
         # Setup console mock
         self.mock_console_instance = self.MockConsole.return_value
@@ -57,9 +61,11 @@ class TestTUIRenderStatus(unittest.TestCase):
         self.renderer = TUIRenderer()
 
     def tearDown(self):
-        self.table_patcher.stop()
-        self.layout_patcher.stop()
+        self.text_patcher.stop()
+        self.panel_patcher.stop()
         self.console_patcher.stop()
+        self.layout_patcher.stop()
+        self.table_patcher.stop()
 
     def test_render_status_updates_renderable(self):
         """Test that render_status correctly creates a Table and updates status_renderable."""
@@ -101,6 +107,52 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][model: claude-3][/dim]",
             "[dim][tokens: 1,234,567][/dim]"
         )
+
+    def test_render_diff(self):
+        """Test that render_diff correctly processes diff text and sets right_renderable."""
+        filepath = "test_file.py"
+        before = "old line 1\n unchanged line 2\n"
+        after = "new line 1\n unchanged line 2\n"
+
+        # Setup Text mock to act like an object with an append method
+        mock_text_instance = self.MockText.return_value
+        mock_text_instance.append = MagicMock()
+
+        # Call the method
+        self.renderer.render_diff(filepath, before, after)
+
+        # Check that Text was instantiated (at least once)
+        self.assertTrue(self.MockText.called)
+
+        # We must filter calls to append because other things might call MockText
+        expected_calls = [
+            unittest.mock.call("--- test_file.py\n", style="bold"),
+            unittest.mock.call("+++ test_file.py\n", style="bold"),
+            unittest.mock.call("@@ -1,2 +1,2 @@\n", style="cyan"),
+            unittest.mock.call("-old line 1\n", style="on #3a1e1e"),
+            unittest.mock.call("+new line 1\n", style="on #1e3a1e"),
+            unittest.mock.call("  unchanged line 2\n"),
+            unittest.mock.call("\n✓ 1 additions, 1 deletions", style="dim")
+        ]
+
+        # Find all append calls and check if our expected calls are in there
+        mock_text_instance.append.assert_has_calls(expected_calls, any_order=False)
+
+        # Check Panel creation
+        self.MockPanel.assert_any_call(
+            mock_text_instance,
+            title=f"Diff: {filepath}",
+            border_style="yellow"
+        )
+
+        # Verify right_renderable is updated
+        self.assertEqual(self.renderer.right_renderable, self.MockPanel.return_value)
+
+    def test_clear_right(self):
+        """Test that clear_right correctly clears the right_renderable."""
+        self.renderer.right_renderable = MagicMock()
+        self.renderer.clear_right()
+        self.assertIsNone(self.renderer.right_renderable)
 
 if __name__ == '__main__':
     unittest.main()
