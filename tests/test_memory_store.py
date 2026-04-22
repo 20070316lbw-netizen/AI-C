@@ -161,6 +161,33 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+    def test_list_by_type_order_by_valid(self):
+        mem1 = Memory(id="1", content="a", type="user", weight=1.0)
+        mem2 = Memory(id="2", content="b", type="user", weight=2.0)
+        self.store.add(mem1)
+        self.store.add(mem2)
+
+        res = self.store.list_by_type("user", order_by="weight DESC, id ASC")
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0].id, "2")
+        self.assertEqual(res[1].id, "1")
+
+    def test_list_by_type_order_by_invalid(self):
+        mem1 = Memory(id="1", content="a", type="user")
+        self.store.add(mem1)
+
+        invalid_orders = [
+            "weight DROP TABLE memories",
+            "invalid_column ASC",
+            "id ASC DESC",
+            "weight; DELETE FROM memories"
+        ]
+
+        for invalid_order in invalid_orders:
+            with self.assertRaises(ValueError):
+                self.store.list_by_type("user", order_by=invalid_order)
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
