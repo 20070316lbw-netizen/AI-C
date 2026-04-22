@@ -11,6 +11,7 @@ import httpx
 from aic.memory.store import MemoryStore
 from aic.memory.types import Memory
 from aic.providers.base import BaseProvider
+from aic.llm import complete, LLMTimeoutError
 
 
 class MemoryExtractor:
@@ -61,59 +62,31 @@ class MemoryExtractor:
                 text = text[:last_ticks]
         return text.strip()
 
-    def _complete(self, user_msg: str, assistant_msg: str) -> str:
-        provider_name = self.provider.name
-        api_key = getattr(self.provider, "_api_key", "")
-        model = self.provider.model
-        base_url = getattr(self.provider, "_base_url", "")
-
-        user_content = f"User: {user_msg}\nAssistant: {assistant_msg}"
-
-        if provider_name == "claude":
-            url = f"{base_url}/v1/messages"
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
-            payload = {
-                "model": model,
-                "system": self.SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_content}],
-                "max_tokens": 1024,
-                "stream": False,
-            }
-            resp = httpx.post(url, headers=headers, json=payload, timeout=60.0)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["content"][0]["text"]
-
-        elif provider_name == "openai_compat":
-            url = f"{base_url}/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content}
-                ],
-                "stream": False,
-            }
-            resp = httpx.post(url, headers=headers, json=payload, timeout=60.0)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-
-        else:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
     def _extract(self, user_msg: str, assistant_msg: str) -> None:
         response_text = ""
         try:
-            response_text = self._complete(user_msg, assistant_msg)
+
+            provider_name = self.provider.name
+            api_key = getattr(self.provider, "_api_key", "")
+            model = self.provider.model
+            base_url = getattr(self.provider, "_base_url", "")
+
+            config = {
+                "api_key": api_key,
+                "model": model,
+                "base_url": base_url
+            }
+
+            user_content = f"User: {user_msg}\nAssistant: {assistant_msg}"
+
+            res = complete(
+                prompt=user_content,
+                provider=provider_name,
+                config=config,
+                system=self.SYSTEM_PROMPT
+            )
+            response_text = res["content"]
+
             cleaned = self.clean_json_response(response_text)
             items = json.loads(cleaned)
 
