@@ -1,6 +1,9 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from aic.repl import start
+from aic.session import Session
+from aic.memory.store import MemoryStore
+from aic.dream.scheduler import DreamScheduler
 
 class TestRepl(unittest.TestCase):
     @patch('builtins.print')
@@ -15,7 +18,11 @@ class TestRepl(unittest.TestCase):
                 "base_url": "https://api.deepseek.com"
             }
         }
-        start(config)
+        mock_session = MagicMock(spec=Session)
+        mock_store = MagicMock(spec=MemoryStore)
+        mock_scheduler = MagicMock(spec=DreamScheduler)
+
+        start(config, mock_session, mock_store, mock_scheduler)
         # Verify it printed the ready message
         mock_print.assert_any_call("aic ready")
         mock_print.assert_any_call("Exiting...")

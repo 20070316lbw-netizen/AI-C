@@ -10,10 +10,10 @@ from aic.tui import TUIRenderer
 from aic.providers.claude import ClaudeProvider
 from aic.providers.openai_compat import OpenAICompatProvider
 from aic.memory.store import MemoryStore
+from aic.dream.scheduler import DreamScheduler
 import aic.kairos as kairos
 
-def start(config: dict):
-    store = MemoryStore()
+def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamScheduler):
     provider_name = config.get("provider", "deepseek")
     provider_config = config.get(provider_name, {})
 
@@ -30,7 +30,6 @@ def start(config: dict):
             base_url=provider_config.get("base_url", "")
         )
 
-    session = Session(config)
     tui = TUIRenderer()
 
     print("aic ready")
@@ -119,6 +118,12 @@ def start(config: dict):
                     for f in files:
                         print(f"{subindent}{f}")
 
+            elif cmd == "/dream":
+                scheduler.run(force=True)
+
+            elif cmd == "/cost":
+                print("暂未实现")
+
             elif cmd == "/help":
                 print("Available commands:")
                 print("  /add <file> - Add a file to the context")
@@ -128,6 +133,8 @@ def start(config: dict):
                 print("  /model      - Show current provider and model")
                 print("  /status     - Show status information")
                 print("  /tree       - Print directory tree")
+                print("  /dream      - 手动触发 Dream 整理（前台同步，显示进度）")
+                print("  /cost       - 查看本次会话消耗（暂未实现）")
                 print("  /help       - Show this help message")
                 print("  /exit       - Exit aic")
 
@@ -251,3 +258,6 @@ def start(config: dict):
         tui.stop()
 
         session.add_assistant(content)
+
+        if not session.poor_mode:
+            scheduler.run(force=False)

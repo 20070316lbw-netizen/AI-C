@@ -8,7 +8,14 @@ from datetime import date
 from typing import Callable
 
 from aic.dream.agent import DreamAgent
-from aic.llm import complete, LLMTimeoutError
+from aic.llm import complete
+
+# 模拟 llm.py 中应该存在的异常（若不存在不报错，直接作为基类异常捕获）
+try:
+    from aic.llm import LLMTimeoutError
+except ImportError:
+    class LLMTimeoutError(Exception):
+        pass
 
 @dataclass
 class DreamResult:
@@ -52,14 +59,21 @@ class Consolidator:
         return self._result
 
     def _run_phase(self, phase: int):
-        if phase == 1:
-            self._phase1()
-        elif phase == 2:
-            self._phase2()
-        elif phase == 3:
-            self._phase3()
-        elif phase == 4:
-            self._phase4()
+        session_id = self.lock.get_state().get("session_id", "")
+        self.kairos_log("dream_phase_start", session_id, {"phase": phase})
+        try:
+            if phase == 1:
+                self._phase1()
+            elif phase == 2:
+                self._phase2()
+            elif phase == 3:
+                self._phase3()
+            elif phase == 4:
+                self._phase4()
+            self.kairos_log("dream_phase_done", session_id, {"phase": phase})
+        except LLMTimeoutError as e:
+            self.kairos_log("dream_phase_timeout", session_id, {"phase": phase, "error": str(e)})
+            raise
 
     def _get_provider_config(self) -> tuple[str, dict]:
         provider = self.config.get("dream", {}).get("provider") or self.config.get("provider", "claude")
