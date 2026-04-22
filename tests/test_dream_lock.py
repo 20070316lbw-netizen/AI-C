@@ -55,6 +55,29 @@ class TestDreamLock(unittest.TestCase):
 
             mock_kill.assert_called_once_with(99999, 0)
 
+    def test_acquire_stale_active_process(self):
+        """测试锁存在且进程活跃，但是锁已经超时，acquire() 应该认为锁已失效并覆盖，返回 True。"""
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        with patch('os.kill') as mock_kill:
+            # Simulate os.kill doing nothing (process is alive)
+            mock_kill.return_value = None
+
+            state = lock.get_state()
+            state["pid"] = 99999
+            # Make it stale
+            state["started_at"] = time.time() - (lock.lock_timeout_h * 3600) - 10
+            self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+            lock2 = DreamLock(self.lock_path)
+            self.assertTrue(lock2.acquire("new_session"))
+
+            mock_kill.assert_called_once_with(99999, 0)
+
+            new_state = lock2.get_state()
+            self.assertEqual(new_state["session_id"], "new_session")
+
     def test_acquire_existing_lock_dead_process(self):
         """测试锁存在但进程不存在时，acquire() 应该接管锁并返回 True。"""
         lock = DreamLock(self.lock_path)
@@ -183,5 +206,49 @@ class TestDreamLock(unittest.TestCase):
         lock.release()
         self.assertFalse(self.lock_path.exists())
 
-if __name__ == '__main__':
+    def test_release_file_not_found(self):
+        """测试 release() 在文件不存在时安全忽略 FileNotFoundError。"""
+        lock = DreamLock(self.lock_path)
+
+        # 确保文件不存在
+        if self.lock_path.exists():
+            self.lock_path.unlink()
+
+        # 调用 release 不应抛出异常
+        try:
+            lock.release()
+        except Exception as e:
+            self.fail(f"release() raised {type(e).__name__} unexpectedly!")
+
+    def test_acquire_missing_pid(self):
+        """测试锁文件存在但没有 pid 时，acquire() 认为其损坏并返回 True 覆盖锁。"""
+        state_without_pid = {
+            "phase": 0,
+            "started_at": time.time(),
+            "session_id": "old_session",
+            "orient_data": {}
+        }
+        self.lock_path.write_text(json.dumps(state_without_pid), encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        state = lock.get_state()
+        self.assertEqual(state["session_id"], self.session_id)
+        self.assertIn("pid", state)
+
+    def test_update_state_corrupted(self):
+        """测试 update_state() 遇到无效 JSON（get_state 返回空）时抛出 RuntimeError。"""
+        self.lock_path.write_text("{not a valid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file is corrupted or empty"):
+            lock.update_state(1)
+
+    def test_get_state_corrupted(self):
+        """测试 get_state() 遇到无效 JSON 时返回 {}。"""
+        self.lock_path.write_text("{not a valid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+        self.assertEqual(lock.get_state(), {})
+
+
+if __name__ == "__main__":
     unittest.main()
