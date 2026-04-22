@@ -25,14 +25,23 @@ def main():
             print("Dream 正在运行中")
         sys.exit(0)
 
+    from aic.kairos import log_event
+    log_event("dream_start", args.session, {"force": args.force})
+
     try:
         consolidator = Consolidator(
             store=store,
             lock=lock,
             config=config,
+            kairos_log=log_event,
             exclude_session_id=args.session
         )
         consolidator.run()
+        log_event("dream_done", args.session, {})
+    except Exception as e:
+        import traceback
+        log_event("dream_error", args.session, {"error": str(e), "trace": traceback.format_exc()})
+        raise
     finally:
         lock.release()
 

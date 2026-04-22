@@ -105,6 +105,7 @@ class DreamScheduler:
     def run(self, force: bool = False) -> None:
         if not force:
             if not self.should_run():
+                self.kairos_log("dream_skipped", self.session_id, {"reason": "gate_check_failed"})
                 return
 
             # Subprocess
