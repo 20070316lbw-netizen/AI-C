@@ -36,6 +36,12 @@ class ClaudeProvider(BaseProvider):
             "stream": True,
         }
 
+        if "tools" in kwargs and kwargs["tools"]:
+            payload["tools"] = kwargs["tools"]
+
+        if "system" in kwargs and kwargs["system"]:
+            payload["system"] = kwargs["system"]
+
         url = f"{self._base_url}/v1/messages"
 
         try:
@@ -46,6 +52,9 @@ class ClaudeProvider(BaseProvider):
                     return
 
                 current_event = None
+                input_tokens = 0
+                output_tokens = 0
+                tool_calls = []
 
                 for line in response.iter_lines():
                     if not line:
@@ -56,15 +65,31 @@ class ClaudeProvider(BaseProvider):
                         continue
 
                     if line.startswith("data: "):
-                        if current_event == "content_block_delta":
-                            data_str = line[6:]
-                            try:
-                                data = json.loads(data_str)
+                        data_str = line[6:]
+                        try:
+                            data = json.loads(data_str)
+
+                            if current_event == "message_start":
+                                usage = data.get("message", {}).get("usage", {})
+                                input_tokens += usage.get("input_tokens", 0)
+                                output_tokens += usage.get("output_tokens", 0)
+                            elif current_event == "message_delta":
+                                usage = data.get("usage", {})
+                                output_tokens += usage.get("output_tokens", 0)
+                            elif current_event == "content_block_delta":
                                 delta = data.get("delta", {})
                                 if delta.get("type") == "text_delta" and "text" in delta:
                                     yield delta["text"]
-                            except json.JSONDecodeError:
-                                continue
+                        except json.JSONDecodeError:
+                            continue
+
+                # After loop ends, yield usage
+                yield {
+                    "type": "usage",
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens
+                }
+
         except Exception as e:
             yield f"[错误] 网络异常 — {str(e)}"
             return

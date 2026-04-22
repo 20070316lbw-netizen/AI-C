@@ -3,7 +3,81 @@ L1 会话层：messages 管理，context files 注入
 """
 import os
 import uuid
+import time
 from pathlib import Path
+from dataclasses import dataclass
+from typing import List
+
+@dataclass
+class TurnUsage:
+    turn: int
+    input_tokens: int
+    output_tokens: int
+    provider: str
+    model: str
+    timestamp: float
+
+class UsageAccumulator:
+    def __init__(self):
+        self.turns: List[TurnUsage] = []
+
+    def record(self, input_tokens: int, output_tokens: int, provider: str, model: str) -> None:
+        self.turns.append(
+            TurnUsage(
+                turn=len(self.turns) + 1,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                provider=provider,
+                model=model,
+                timestamp=time.time()
+            )
+        )
+
+    def total_input(self) -> int:
+        return sum(t.input_tokens for t in self.turns)
+
+    def total_output(self) -> int:
+        return sum(t.output_tokens for t in self.turns)
+
+    def total_cost_usd(self, pricing: dict) -> float:
+        total = 0.0
+        for t in self.turns:
+            cost_info = None
+            for key, (in_price, out_price) in pricing.items():
+                if key in t.model:
+                    cost_info = (in_price, out_price)
+                    break
+
+            if cost_info:
+                in_price, out_price = cost_info
+                # price is per 1M tokens
+                total += (t.input_tokens / 1_000_000.0) * in_price
+                total += (t.output_tokens / 1_000_000.0) * out_price
+        return total
+
+    def last_output_tokens(self) -> int:
+        if not self.turns:
+            return 0
+        return self.turns[-1].output_tokens
+
+class TokenGuard:
+    def __init__(self, spike_threshold=2000, consecutive_limit=3):
+        self.spike_threshold = spike_threshold
+        self.consecutive_limit = consecutive_limit
+        self._spike_count = 0
+
+    def record(self, output_tokens: int) -> bool:
+        """Returns True if Poor Mode should be auto-activated"""
+        if output_tokens >= self.spike_threshold:
+            self._spike_count += 1
+        else:
+            self._spike_count = 0
+
+        return self._spike_count >= self.consecutive_limit
+
+    @property
+    def spike_count(self) -> int:
+        return self._spike_count
 
 class Session:
     def __init__(self, config: dict):
@@ -12,6 +86,10 @@ class Session:
         self._messages: list[dict] = []
         self._context_files: list[str] = []
         self.poor_mode: bool = False
+        self.poor_mode_reason: str = ""
+
+        self.accumulator = UsageAccumulator()
+        self.token_guard = TokenGuard()
 
         self._global_context = ""
         self._project_context = ""
@@ -46,10 +124,8 @@ class Session:
             if abs_path not in self._context_files:
                 self._context_files.append(abs_path)
 
-    def get_messages(self) -> list[dict]:
-        """返回完整 messages 列表，首个是 system message (如果有上下文)"""
+    def get_system(self) -> str:
         system_parts = []
-
         if self._global_context:
             system_parts.append(self._global_context.strip())
 
@@ -63,9 +139,16 @@ class Session:
             except Exception:
                 pass
 
-        messages = []
         if system_parts:
-            system_content = "\n\n---\n\n".join(system_parts)
+            return "\n\n---\n\n".join(system_parts)
+        return ""
+
+    def get_messages(self) -> list[dict]:
+        """返回完整 messages 列表，首个是 system message (如果有上下文)"""
+        system_content = self.get_system()
+
+        messages = []
+        if system_content:
             messages.append({"role": "system", "content": system_content})
 
         messages.extend(self._messages)
@@ -85,3 +168,7 @@ class Session:
 
     def session_id(self) -> str:
         return self._session_id
+
+    def activate_poor_mode(self, reason: str = ""):
+        self.poor_mode = True
+        self.poor_mode_reason = reason

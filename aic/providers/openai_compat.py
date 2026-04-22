@@ -32,7 +32,12 @@ class OpenAICompatProvider(BaseProvider):
             "model": self._model,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True}
         }
+
+        # Tools integration for openai_compat stream
+        if "tools" in kwargs and kwargs["tools"]:
+            payload["tools"] = kwargs["tools"]
 
         url = f"{self._base_url}/chat/completions"
 
@@ -42,6 +47,10 @@ class OpenAICompatProvider(BaseProvider):
                     error_text = response.read().decode("utf-8")
                     yield f"[错误] HTTP {response.status_code} — {error_text}"
                     return
+
+                tool_call_id = ""
+                tool_name = ""
+                arguments_buffer = ""
 
                 for line in response.iter_lines():
                     if not line:
@@ -56,8 +65,38 @@ class OpenAICompatProvider(BaseProvider):
                                 delta = data["choices"][0].get("delta", {})
                                 if "content" in delta and delta["content"]:
                                     yield delta["content"]
+                                if "tool_calls" in delta and delta["tool_calls"]:
+                                    tc = delta["tool_calls"][0]
+                                    if "id" in tc and tc["id"]:
+                                        tool_call_id = tc["id"]
+                                    if "function" in tc:
+                                        if "name" in tc["function"] and tc["function"]["name"]:
+                                            tool_name = tc["function"]["name"]
+                                        if "arguments" in tc["function"] and tc["function"]["arguments"]:
+                                            arguments_buffer += tc["function"]["arguments"]
+
+                            if "usage" in data and data["usage"]:
+                                yield {
+                                    "type": "usage",
+                                    "input_tokens": data["usage"].get("prompt_tokens", 0),
+                                    "output_tokens": data["usage"].get("completion_tokens", 0)
+                                }
                         except json.JSONDecodeError:
                             continue
+
+                # Once stream completes, if we accumulated a tool call, yield it
+                if tool_name:
+                    yield {
+                        "type": "tool_calls",
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": arguments_buffer
+                            }
+                        }]
+                    }
         except Exception as e:
              yield f"[错误] 网络异常 — {str(e)}"
              return
