@@ -183,5 +183,71 @@ class TestDreamLock(unittest.TestCase):
         lock.release()
         self.assertFalse(self.lock_path.exists())
 
+    def test_get_state_exception(self):
+        """测试 get_state() 在读取到非 JSON 内容或发生异常时返回空字典。"""
+        lock = DreamLock(self.lock_path)
+        self.lock_path.write_text("invalid json {", encoding="utf-8")
+        self.assertEqual(lock.get_state(), {})
+
+    def test_acquire_corrupted_lock_no_pid(self):
+        """测试 acquire() 遇到存在但缺失 pid 的锁文件应覆盖写入并返回 True。"""
+        lock = DreamLock(self.lock_path)
+        # Create a lock file without pid
+        state = {
+            "phase": 0,
+            "started_at": time.time(),
+            "session_id": "old_session"
+        }
+        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+        self.assertTrue(lock.acquire(self.session_id))
+        new_state = lock.get_state()
+        self.assertEqual(new_state["session_id"], self.session_id)
+
+    def test_acquire_stale_active_process(self):
+        """测试 acquire() 当锁文件存在，进程存活但是锁过期时应该覆盖并返回 True。"""
+        lock = DreamLock(self.lock_path, lock_timeout_h=1.0)
+
+        state = {
+            "pid": 99999,
+            "phase": 0,
+            "started_at": time.time() - 3600 - 10, # Make it stale (> 1h)
+            "session_id": "old_session",
+            "orient_data": {}
+        }
+        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+        with patch('os.kill') as mock_kill:
+            # Simulate process is alive
+            mock_kill.return_value = None
+
+            self.assertTrue(lock.acquire(self.session_id))
+            mock_kill.assert_called_once_with(99999, 0)
+
+        new_state = lock.get_state()
+        self.assertEqual(new_state["session_id"], self.session_id)
+
+    def test_update_state_corrupted_lock(self):
+        """测试 update_state() 在遇到锁文件损坏或空时抛出 RuntimeError。"""
+        lock = DreamLock(self.lock_path)
+
+        self.lock_path.write_text("invalid json {", encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file is corrupted or empty"):
+            lock.update_state(1)
+
+    @patch("pathlib.Path.unlink")
+    def test_release_file_not_found_handling(self, mock_unlink):
+        """测试 release() 仅忽略 FileNotFoundError，不忽略其他 OSError。"""
+        lock = DreamLock(self.lock_path)
+        mock_unlink.side_effect = FileNotFoundError()
+        lock.release()
+        mock_unlink.assert_called_once()
+
+        mock_unlink.reset_mock()
+        mock_unlink.side_effect = PermissionError()
+        with self.assertRaises(PermissionError):
+            lock.release()
+
 if __name__ == '__main__':
     unittest.main()
