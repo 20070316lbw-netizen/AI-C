@@ -138,11 +138,19 @@ class TestDreamLock(unittest.TestCase):
 
         self.assertTrue(lock.is_stale())
 
+    def test_update_state_corrupted_file(self):
+        """测试锁文件损坏时，update_state 应该引发 RuntimeError。"""
+        self.lock_path.write_text("not a valid json", encoding="utf-8")
+        lock = DreamLock(self.lock_path)
+
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file is corrupted or empty"):
+            lock.update_state(1)
+
     def test_update_state(self):
         """测试 update_state 更新 phase 和 orient_data。"""
         lock = DreamLock(self.lock_path)
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaisesRegex(RuntimeError, "Cannot update state: lock file does not exist"):
             lock.update_state(1)
 
         self.assertTrue(lock.acquire(self.session_id))
