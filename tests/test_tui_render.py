@@ -102,5 +102,23 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][tokens: 1,234,567][/dim]"
         )
 
+    def test_render_status_calls_update_layout(self):
+        """Test that render_status calls _update_layout."""
+        # Patch it on the instance
+        self.renderer._update_layout = MagicMock()
+        self.renderer.render_status("openai", "gpt-4", 100)
+        self.renderer._update_layout.assert_called_once()
+
+    def test_clear_right(self):
+        """Test that clear_right sets right_renderable to None and updates layout."""
+        self.renderer.right_renderable = "some_panel"
+        self.renderer._update_layout = MagicMock()
+
+        self.renderer.clear_right()
+
+        self.assertIsNone(self.renderer.right_renderable)
+        self.renderer._update_layout.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
