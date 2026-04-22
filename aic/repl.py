@@ -2,6 +2,7 @@
 L1 会话层：对话循环、slash 命令路由
 """
 import os
+import re as _re
 import sys
 from pathlib import Path
 
@@ -17,6 +18,112 @@ from aic.mcp.runner import SandboxSession
 from aic.llm import complete
 from dataclasses import asdict
 from aic.errors import print_error, print_warning, print_ok
+
+_GREP_SKIP_DIRS = {"__pycache__", "node_modules", ".venv", ".git"}
+
+
+def _grep_search(
+    pattern: str,
+    path: str = ".",
+    context_lines: int = 3,
+    max_matches: int = 200,
+) -> tuple[list[dict], bool]:
+    """
+    Grep-style file search. Returns (results, truncated).
+    Each result: {"file": str, "match_count": int, "ranges": [(start_idx, end_idx, {match_idxs})], "all_lines": list[str]}
+    """
+    try:
+        regex = _re.compile(pattern, _re.IGNORECASE)
+    except _re.error:
+        regex = _re.compile(_re.escape(pattern), _re.IGNORECASE)
+
+    p = Path(path)
+    if p.is_file():
+        candidate_files = [p]
+    elif p.is_dir():
+        candidate_files = []
+        for child in sorted(p.rglob("*")):
+            if not child.is_file():
+                continue
+            if any(part.startswith(".") for part in child.parts):
+                continue
+            if any(part in _GREP_SKIP_DIRS for part in child.parts):
+                continue
+            try:
+                if b"\0" in child.read_bytes()[:512]:
+                    continue
+            except Exception:
+                continue
+            candidate_files.append(child)
+    else:
+        return [], False
+
+    results = []
+    total_matches = 0
+    truncated = False
+
+    for f in candidate_files:
+        if total_matches >= max_matches:
+            truncated = True
+            break
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        all_lines = text.splitlines()
+        matching_idxs = [i for i, line in enumerate(all_lines) if regex.search(line)]
+        if not matching_idxs:
+            continue
+
+        # Merge overlapping context windows into ranges
+        ranges: list[tuple[int, int, set]] = []
+        for mi in matching_idxs:
+            if total_matches >= max_matches:
+                truncated = True
+                break
+            s = max(0, mi - context_lines)
+            e = min(len(all_lines) - 1, mi + context_lines)
+            if ranges and s <= ranges[-1][1] + 1:
+                ranges[-1] = (ranges[-1][0], max(ranges[-1][1], e), ranges[-1][2] | {mi})
+            else:
+                ranges.append((s, e, {mi}))
+            total_matches += 1
+
+        results.append({
+            "file": str(f),
+            "match_count": len(matching_idxs),
+            "ranges": ranges,
+            "all_lines": all_lines,
+        })
+
+    return results, truncated
+
+
+def _format_grep_results(pattern: str, path: str, results: list[dict], truncated: bool) -> str:
+    """Format grep results as an annotated snippet block for display and LLM injection."""
+    if not results:
+        return f"[grep: {repr(pattern)} in {path}] — 无匹配"
+
+    total = sum(r["match_count"] for r in results)
+    header = f"=== grep: {repr(pattern)} in {path} — {total} 处匹配{'（已截断，仅显示前 200 处）' if truncated else ''} ==="
+    out = [header]
+
+    for group in results:
+        out.append(f"\nFile: {group['file']} ({group['match_count']} 处匹配)")
+        out.append("─" * 50)
+        first_range = True
+        for start_idx, end_idx, match_idxs in group["ranges"]:
+            if not first_range:
+                out.append("  ···")
+            first_range = False
+            for i in range(start_idx, end_idx + 1):
+                marker = ">" if i in match_idxs else " "
+                out.append(f"{marker} {i + 1:5d}│ {group['all_lines'][i]}")
+        out.append("")
+
+    return "\n".join(out)
+
 
 def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamScheduler, registry: MCPRegistry):
     provider_name = config.get("provider", "deepseek")
@@ -260,6 +367,30 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
                 })
                 print_ok("Search results injected into current context.")
 
+            elif cmd == "/grep":
+                if len(parts) < 2:
+                    print_error("Usage: /grep <pattern> [path]")
+                    continue
+                grep_args = parts[1].split(maxsplit=1)
+                grep_pattern = grep_args[0]
+                grep_path = grep_args[1] if len(grep_args) > 1 else "."
+
+                grep_results, grep_truncated = _grep_search(grep_pattern, grep_path)
+                formatted_grep = _format_grep_results(grep_pattern, grep_path, grep_results, grep_truncated)
+
+                from rich.console import Console
+                Console().print(formatted_grep)
+
+                if grep_results:
+                    session._messages.append({"role": "system", "content": formatted_grep})
+                    total_hits = sum(r["match_count"] for r in grep_results)
+                    print_ok(
+                        f"grep: {total_hits} 处匹配已注入上下文"
+                        + ("（已截断）" if grep_truncated else "")
+                    )
+                else:
+                    print_warning(f"grep: '{grep_pattern}' 在 {grep_path} 中无匹配")
+
             elif cmd == "/help":
                 print("Available commands:")
                 print("  /add <file|dir> - Add a file or directory (max 20 files) to the context")
@@ -273,6 +404,7 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
                 print("  /mcp        - 查看已注册的 MCP server 和工具列表")
                 print("  /dream      - 手动触发 Dream 整理（前台同步，显示进度）")
                 print("  /search <q> - Search the web immediately")
+                print("  /grep <pat> [path] - 关键词搜索文件，注入匹配行（零依赖 grep）")
                 print("  /cost       - 查看本次会话消耗")
                 print("  /poor       - Toggle Poor Mode")
                 print("  /help       - Show this help message")
