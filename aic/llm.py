@@ -1,6 +1,6 @@
 import json
 import httpx
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 DEFAULT_TIMEOUT = httpx.Timeout(60.0, read=120.0)
 
