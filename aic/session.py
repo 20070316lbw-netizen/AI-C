@@ -92,6 +92,7 @@ class Session:
         self._session_id = str(uuid.uuid4())
         self._messages: list[dict] = []
         self._context_files: list[str] = []
+        self._file_cache: dict[str, tuple[float, str]] = {}
         self.poor_mode: bool = False
         self.poor_mode_reason: str = ""
 
@@ -159,7 +160,12 @@ class Session:
 
         for filepath in self._context_files:
             try:
-                content = Path(filepath).read_text(encoding="utf-8")
+                mtime = os.stat(filepath).st_mtime
+                if filepath in self._file_cache and self._file_cache[filepath][0] == mtime:
+                    content = self._file_cache[filepath][1]
+                else:
+                    content = Path(filepath).read_text(encoding="utf-8")
+                    self._file_cache[filepath] = (mtime, content)
                 system_parts.append(f"--- File: {filepath} ---\n{content.strip()}")
             except Exception:
                 pass
