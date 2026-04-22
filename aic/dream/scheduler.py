@@ -128,19 +128,33 @@ class DreamScheduler:
         print(f"📦 未处理记忆：{self.store.count_unprocessed()} 条")
 
         try:
-            print("🔄 Phase 1/4 — Orient...")
-            # Simulate progress for stubs
-            print("✅ Phase 1 完成，发现 0 个冲突")
-            print("🔄 Phase 2/4 — Gather...")
-            print("✅ Phase 2 完成")
-            print("🔄 Phase 3/4 — Merge...")
-            print("✅ Phase 3 完成")
-            print("🔄 Phase 4/4 — Prune...")
+            def tracking_log(event: str, sid: str, payload: dict):
+                self.kairos_log(event, sid, payload)
+                phase = payload.get("phase")
+                if event == "dream_phase_start":
+                    if phase == 1:
+                        print("🔄 Phase 1/4 — Orient...")
+                    elif phase == 2:
+                        print("🔄 Phase 2/4 — Gather...")
+                    elif phase == 3:
+                        print("🔄 Phase 3/4 — Merge...")
+                    elif phase == 4:
+                        print("🔄 Phase 4/4 — Prune...")
+                elif event == "dream_phase_done":
+                    if phase == 1:
+                        state = self.lock.get_state()
+                        conflicts = state.get("orient_data", {}).get("conflicts", [])
+                        print(f"✅ Phase 1 完成，发现 {len(conflicts)} 个冲突")
+                    elif phase == 2:
+                        print("✅ Phase 2 完成")
+                    elif phase == 3:
+                        print("✅ Phase 3 完成")
 
             consolidator = Consolidator(
                 store=self.store,
                 lock=self.lock,
                 config=self.config,
+                kairos_log=tracking_log,
                 exclude_session_id=self.session_id
             )
             result = consolidator.run()
