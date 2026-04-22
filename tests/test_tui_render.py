@@ -102,5 +102,18 @@ class TestTUIRenderStatus(unittest.TestCase):
             "[dim][tokens: 1,234,567][/dim]"
         )
 
+    def test_render_stream_start(self):
+        """Test that render_stream_start updates streaming state and triggers a layout update."""
+        with patch.object(self.renderer, '_update_layout') as mock_update_layout:
+            # Set initial state to something else to ensure it changes
+            self.renderer.streaming = False
+            self.renderer.stream_content = "some old content"
+
+            self.renderer.render_stream_start()
+
+            self.assertTrue(self.renderer.streaming)
+            self.assertEqual(self.renderer.stream_content, "")
+            mock_update_layout.assert_called_once()
+
 if __name__ == '__main__':
     unittest.main()
