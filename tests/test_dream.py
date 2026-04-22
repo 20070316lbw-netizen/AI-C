@@ -180,6 +180,27 @@ class TestDreamAgent(unittest.TestCase):
         self.assertEqual(mem_id, "mock_hash")
         self.store.add.assert_not_called()
 
+    def test_list_memories(self):
+        from aic.memory.types import Memory
+        mem1 = Memory(id="1", content="c1", type="user", created_at=100.0, updated_at=100.0)
+        mem2 = Memory(id="2", content="c2", type="user", created_at=200.0, updated_at=200.0)
+        mem3 = Memory(id="3", content="c3", type="user", created_at=300.0, updated_at=300.0)
+
+        self.store.list_by_type.return_value = [mem1, mem2, mem3]
+
+        # Test no limit (default limit is 50, but we just want to see it returns all 3 here)
+        res = self.agent.list_memories("user")
+        self.assertEqual(len(res), 3)
+        self.assertEqual(res[0]["id"], "1")
+        self.assertEqual(res[2]["id"], "3")
+        self.store.list_by_type.assert_called_with("user")
+
+        # Test limit
+        res_limit = self.agent.list_memories("user", limit=2)
+        self.assertEqual(len(res_limit), 2)
+        self.assertEqual(res_limit[0]["id"], "1")
+        self.assertEqual(res_limit[1]["id"], "2")
+
     def test_soft_delete_memory(self):
         # Mock target doesn't exist
         self.store.get.side_effect = lambda id: None
