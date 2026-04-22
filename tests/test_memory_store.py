@@ -175,5 +175,31 @@ class TestMemoryStore(unittest.TestCase):
         res_all = self.store.list_unprocessed()
         self.assertEqual(len(res_all), 2)
 
+    def test_archive_many(self):
+        memories = [
+            Memory(
+                id=f"mem_{i}",
+                type="user",
+                content=f"content {i}",
+                source="test",
+                session_id="test_session"
+            ) for i in range(1200)
+        ]
+        for m in memories:
+            self.store.add(m)
+
+        ids_to_archive = [f"mem_{i}" for i in range(1000)]
+        self.store.archive_many(ids_to_archive)
+
+        # Verify first 1000 are archived
+        for i in range(1000):
+            m = self.store.get(f"mem_{i}")
+            self.assertTrue(m.is_archived, f"Memory mem_{i} should be archived")
+
+        # Verify remaining 200 are not archived
+        for i in range(1000, 1200):
+            m = self.store.get(f"mem_{i}")
+            self.assertFalse(m.is_archived, f"Memory mem_{i} should not be archived")
+
 if __name__ == '__main__':
     unittest.main()

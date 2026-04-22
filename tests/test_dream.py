@@ -234,4 +234,4 @@ class TestConsolidator(unittest.TestCase):
         self.consolidator.run()
 
         # max is 1, so excess should be archived
-        self.store.archive.assert_called_with("id2")
+        self.store.archive_many.assert_called_with(["id2"])
