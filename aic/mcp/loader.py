@@ -77,6 +77,3 @@ class MCPLoader:
 
         return success_count
 
-    def reload(self) -> int:
-        self.registry.shutdown_all()
-        return self.load()
