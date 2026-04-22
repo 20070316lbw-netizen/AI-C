@@ -130,8 +130,36 @@ class MemoryStore:
             cursor = self.conn.cursor()
             query = 'SELECT * FROM memories WHERE type = ? AND is_archived = 0'
             if order_by:
-                # order_by is safe in this context, just append it
-                query += f' ORDER BY {order_by}'
+                allowed_columns = {
+                    'id', 'content', 'type', 'weight', 'created_at', 'updated_at',
+                    'source', 'session_id', 'is_archived', 'is_processed',
+                    'superseded_by', 'meta', 'version', 'last_accessed_at'
+                }
+                parts = [p.strip() for p in order_by.split(',')]
+                valid_parts = []
+                for part in parts:
+                    if not part:
+                        continue
+                    tokens = part.split()
+                    if len(tokens) > 2:
+                        raise ValueError("Invalid order_by clause")
+
+                    col = tokens[0].lower()
+                    if col not in allowed_columns:
+                        raise ValueError(f"Invalid column in order_by: {col}")
+
+                    if len(tokens) == 2:
+                        direction = tokens[1].upper()
+                        if direction not in ('ASC', 'DESC'):
+                            raise ValueError(f"Invalid sort direction in order_by: {direction}")
+                        valid_parts.append(f"{col} {direction}")
+                    else:
+                        valid_parts.append(col)
+
+                if not valid_parts:
+                    raise ValueError("Empty order_by clause")
+
+                query += ' ORDER BY ' + ', '.join(valid_parts)
 
             cursor.execute(query, (type,))
             rows = cursor.fetchall()
