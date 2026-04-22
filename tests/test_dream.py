@@ -261,11 +261,50 @@ class TestDreamScheduler(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+from aic.memory.types import Memory
+
 class TestDreamAgent(unittest.TestCase):
     def setUp(self):
         self.store = MagicMock()
         from aic.dream.agent import DreamAgent
         self.agent = DreamAgent(self.store, "test")
+
+    def test_read_memory(self):
+        # Test not found
+        self.store.get.return_value = None
+        self.assertIsNone(self.agent.read_memory("missing_id"))
+
+        # Test found
+        mock_mem = Memory(id="test_id", content="test content", type="user")
+        self.store.get.return_value = mock_mem
+
+        result = self.agent.read_memory("test_id")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["id"], "test_id")
+        self.assertEqual(result["content"], "test content")
+        self.assertEqual(result["type"], "user")
+
+    def test_list_memories(self):
+        # Test empty list
+        self.store.list_by_type.return_value = []
+        self.assertEqual(self.agent.list_memories("user"), [])
+
+        # Test list with limit
+        mock_mems = [
+            Memory(id=f"id_{i}", content=f"content {i}", type="user")
+            for i in range(5)
+        ]
+        self.store.list_by_type.return_value = mock_mems
+
+        # limit = 2
+        result_limited = self.agent.list_memories("user", limit=2)
+        self.assertEqual(len(result_limited), 2)
+        self.assertEqual(result_limited[0]["id"], "id_0")
+        self.assertEqual(result_limited[1]["id"], "id_1")
+
+        # limit = 10 (more than available)
+        result_all = self.agent.list_memories("user", limit=10)
+        self.assertEqual(len(result_all), 5)
 
     def test_add_memory_dedup(self):
         # mock existing
