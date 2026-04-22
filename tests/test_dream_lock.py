@@ -55,6 +55,43 @@ class TestDreamLock(unittest.TestCase):
 
             mock_kill.assert_called_once_with(99999, 0)
 
+    def test_acquire_existing_lock_active_stale(self):
+        """测试锁存在、进程活跃，但锁已经超时，acquire() 应该返回 True。"""
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        with patch('os.kill') as mock_kill:
+            # Simulate os.kill doing nothing (process is alive)
+            mock_kill.return_value = None
+
+            # Change PID to simulate another process and make it stale
+            state = lock.get_state()
+            state["pid"] = 99999
+            state["started_at"] = time.time() - (lock.lock_timeout_h * 3600) - 10
+            self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+            lock2 = DreamLock(self.lock_path)
+            self.assertTrue(lock2.acquire("stale_session"))
+
+            mock_kill.assert_called_once_with(99999, 0)
+
+    def test_acquire_missing_pid(self):
+        """测试锁文件中缺少 pid 时，当作 corrupted lock 覆盖并返回 True。"""
+        lock = DreamLock(self.lock_path)
+        self.assertTrue(lock.acquire(self.session_id))
+
+        # Remove pid from the lock file
+        state = lock.get_state()
+        if "pid" in state:
+            del state["pid"]
+        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+
+        lock2 = DreamLock(self.lock_path)
+        self.assertTrue(lock2.acquire("missing_pid_session"))
+
+        new_state = lock2.get_state()
+        self.assertEqual(new_state["session_id"], "missing_pid_session")
+
     def test_acquire_existing_lock_dead_process(self):
         """测试锁存在但进程不存在时，acquire() 应该接管锁并返回 True。"""
         lock = DreamLock(self.lock_path)
