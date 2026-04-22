@@ -161,6 +161,27 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+        # Test valid order_by
+        res_ordered = self.store.list_by_type("user", order_by="weight ASC, updated_at DESC")
+        self.assertEqual(len(res_ordered), 1)
+
+    def test_list_by_type_sql_injection(self):
+        mem1 = Memory(id="1", content="a", type="user", source="test")
+        self.store.add(mem1)
+
+        # Test invalid column
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="invalid_col ASC")
+
+        # Test invalid direction
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="weight DROP")
+
+        # Test actual SQL injection attempt
+        with self.assertRaises(ValueError):
+            self.store.list_by_type("user", order_by="weight; DROP TABLE memories")
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
