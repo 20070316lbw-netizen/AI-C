@@ -31,11 +31,11 @@ class ToolInfo:
 
 class MCPRegistry:
     def __init__(self):
-        self.servers: dict[str, ServerInfo] = {}
-        self.tools: dict[str, ToolInfo] = {}
+        self.servers: Dict[str, ServerInfo] = {}
+        self.tools: Dict[str, ToolInfo] = {}
         self._request_id = 0
-        self._queues: dict[subprocess.Popen, dict[int, queue.Queue]] = {}
-        self._reader_threads: dict[subprocess.Popen, threading.Thread] = {}
+        self._queues: Dict[subprocess.Popen, Dict[int, queue.Queue]] = {}
+        self._reader_threads: Dict[subprocess.Popen, threading.Thread] = {}
         self._lock = threading.Lock()
 
     def _expand_env(self, env: dict[str, str]) -> dict[str, str]:
@@ -210,44 +210,41 @@ class MCPRegistry:
         return list(self.tools.values())
 
     def call_tool(self, tool_name: str, arguments: dict) -> str:
-        try:
-            if "." not in tool_name:
-                matches = [t for t in self.tools.values() if t.name.endswith(f".{tool_name}")]
-                if len(matches) > 1:
-                    conflicts = ", ".join([t.name for t in matches])
-                    return f"工具名 '{tool_name}' 在多个 server 中存在冲突 ({conflicts})，请使用完整格式 server_name.tool_name 重试。"
-                elif len(matches) == 0:
-                    return f"Tool {tool_name} not found"
-                tool_info = matches[0]
-            else:
-                tool_info = self.tools.get(tool_name)
-                if not tool_info:
-                    return f"Tool {tool_name} not found"
+        if "." not in tool_name:
+            matches = [t for t in self.tools.values() if t.name.endswith(f".{tool_name}")]
+            if len(matches) > 1:
+                conflicts = ", ".join([t.name for t in matches])
+                return f"工具名 '{tool_name}' 在多个 server 中存在冲突 ({conflicts})，请使用完整格式 server_name.tool_name 重试。"
+            elif len(matches) == 0:
+                return f"Tool {tool_name} not found"
+            tool_info = matches[0]
+        else:
+            tool_info = self.tools.get(tool_name)
+            if not tool_info:
+                return f"Tool {tool_name} not found"
 
-            server_info = self.servers.get(tool_info.server_name)
-            if not server_info or not server_info.process:
-                return f"Server {tool_info.server_name} not available"
+        server_info = self.servers.get(tool_info.server_name)
+        if not server_info or not server_info.process:
+            return f"Server {tool_info.server_name} not available"
 
-            real_tool_name = tool_info.name.split(".", 1)[1]
+        real_tool_name = tool_info.name.split(".", 1)[1]
 
-            resp = self._send_request(server_info.process, "tools/call", {
-                "name": real_tool_name,
-                "arguments": arguments
-            })
+        resp = self._send_request(server_info.process, "tools/call", {
+            "name": real_tool_name,
+            "arguments": arguments
+        })
 
-            if "error" in resp:
-                return json.dumps(resp["error"])
-            elif "result" in resp:
-                if "content" in resp["result"]:
-                    content = resp["result"]["content"]
-                    if isinstance(content, list):
-                        return "\n".join([c.get("text", "") for c in content if c.get("type") == "text"])
-                    return str(content)
-                return json.dumps(resp["result"])
+        if "error" in resp:
+            return json.dumps(resp["error"])
+        elif "result" in resp:
+            if "content" in resp["result"]:
+                content = resp["result"]["content"]
+                if isinstance(content, list):
+                    return "\n".join([c.get("text", "") for c in content if c.get("type") == "text"])
+                return str(content)
+            return json.dumps(resp["result"])
 
-            return str(resp)
-        except Exception as e:
-            return f"调用工具 '{tool_name}' 时发生异常: {str(e)}"
+        return str(resp)
 
     def shutdown_all(self) -> None:
         server_names = list(self.servers.keys())

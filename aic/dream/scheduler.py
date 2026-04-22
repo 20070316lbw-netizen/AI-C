@@ -12,7 +12,6 @@ from typing import Callable, Optional
 from aic.dream.consolidator import Consolidator, DreamResult
 from aic.dream.lock import DreamLock
 from aic.memory.store import MemoryStore
-from aic.errors import print_error, print_warning, print_ok
 
 class DreamScheduler:
     def __init__(
@@ -120,13 +119,13 @@ class DreamScheduler:
 
         # Force = True
         if not self.lock.acquire(self.session_id):
-            print_warning("Dream 正在运行中")
+            print("Dream 正在运行中")
             return
 
         self.kairos_log("dream_start", self.session_id, {"force": True})
 
-        print_ok("🌙 Dream 触发原因：force=True")
-        print_ok(f"📦 未处理记忆：{self.store.count_unprocessed()} 条")
+        print("🌙 Dream 触发原因：force=True")
+        print(f"📦 未处理记忆：{self.store.count_unprocessed()} 条")
 
         try:
             def tracking_log(event: str, sid: str, payload: dict):
@@ -134,22 +133,22 @@ class DreamScheduler:
                 phase = payload.get("phase")
                 if event == "dream_phase_start":
                     if phase == 1:
-                        print_ok("🔄 Phase 1/4 — Orient...")
+                        print("🔄 Phase 1/4 — Orient...")
                     elif phase == 2:
-                        print_ok("🔄 Phase 2/4 — Gather...")
+                        print("🔄 Phase 2/4 — Gather...")
                     elif phase == 3:
-                        print_ok("🔄 Phase 3/4 — Merge...")
+                        print("🔄 Phase 3/4 — Merge...")
                     elif phase == 4:
-                        print_ok("🔄 Phase 4/4 — Prune...")
+                        print("🔄 Phase 4/4 — Prune...")
                 elif event == "dream_phase_done":
                     if phase == 1:
                         state = self.lock.get_state()
                         conflicts = state.get("orient_data", {}).get("conflicts", [])
-                        print_ok(f"✅ Phase 1 完成，发现 {len(conflicts)} 个冲突")
+                        print(f"✅ Phase 1 完成，发现 {len(conflicts)} 个冲突")
                     elif phase == 2:
-                        print_ok("✅ Phase 2 完成")
+                        print("✅ Phase 2 完成")
                     elif phase == 3:
-                        print_ok("✅ Phase 3 完成")
+                        print("✅ Phase 3 完成")
 
             consolidator = Consolidator(
                 store=self.store,
@@ -160,7 +159,7 @@ class DreamScheduler:
             )
             result = consolidator.run()
 
-            print_ok(f"✅ Dream 完成 | 合并 {result.merged} 条 · 归档 {result.archived} 条 · 新增 {result.added} 条 · 冲突解决 {result.conflicts_resolved} 个")
+            print(f"✅ Dream 完成 | 合并 {result.merged} 条 · 归档 {result.archived} 条 · 新增 {result.added} 条 · 冲突解决 {result.conflicts_resolved} 个")
 
         except Exception as e:
             self.kairos_log("dream_error", self.session_id, {"error": str(e)})

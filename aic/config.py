@@ -30,19 +30,6 @@ DEFAULT_CONFIG = {
         "min_sessions": 5,
         "lock_timeout_h": 1,
         "model": "deepseek-chat"
-    },
-    "search": {
-        "auto_search": False,
-        "brave_api_key": "",
-        "max_results": 5
-    },
-    "pricing": {
-        "claude-sonnet": [3.00, 15.00],
-        "claude-opus": [15.00, 75.00],
-        "deepseek-v3": [0.27, 1.10],
-        "deepseek-chat": [0.27, 1.10],
-        "grok-4.1-fast": [0.20, 0.40],
-        "grok-code-fast": [0.20, 0.40]
     }
 }
 
@@ -82,9 +69,6 @@ def _get_raw_config() -> dict:
 
     if "GEMINI_API_KEY" in os.environ:
         config.setdefault("gemini", {})["api_key"] = os.environ["GEMINI_API_KEY"]
-
-    if "BRAVE_API_KEY" in os.environ:
-        config.setdefault("search", {})["brave_api_key"] = os.environ["BRAVE_API_KEY"]
 
     return config
 

@@ -118,20 +118,9 @@ class TUIRenderer:
         self._update_layout()
 
     def render_file(self, filepath: str, content: str):
-        # Truncate to 1000 lines to avoid rendering huge files
-        lines = content.splitlines()
-        truncated = False
-        if len(lines) > 1000:
-            content = "\n".join(lines[:1000])
-            truncated = True
-
         syntax = Syntax(content, filepath.split('.')[-1] if '.' in filepath else 'text', theme="monokai", line_numbers=True)
         self.right_renderable = Panel(syntax, title=filepath, border_style="green")
         self._update_layout()
-
-        if truncated:
-            from aic.errors import print_warning
-            print_warning(f"Display truncated at 1000 lines for {filepath} (full content still in context)")
 
     def render_diff(self, filepath: str, before: str, after: str):
         before_lines = before.splitlines(keepends=True)

@@ -45,9 +45,7 @@ class TestOpenAICompatProvider(unittest.TestCase):
         result = list(self.provider.stream(self.messages))
 
         # Verify the results
-        # Strip out sentinel dictionaries to just compare string chunks
-        text_result = [r for r in result if isinstance(r, str)]
-        self.assertEqual(text_result, ["Hello", " world"])
+        self.assertEqual(result, ["Hello", " world"])
 
         # Verify the httpx.stream call
         mock_stream.assert_called_once_with(
@@ -61,7 +59,6 @@ class TestOpenAICompatProvider(unittest.TestCase):
                 "model": "test-model",
                 "messages": self.messages,
                 "stream": True,
-                "stream_options": {"include_usage": True}
             },
             timeout=60.0
         )
@@ -139,8 +136,7 @@ class TestClaudeProvider(unittest.TestCase):
         result = list(self.provider.stream(self.messages))
 
         # Verify the results
-        text_result = [r for r in result if isinstance(r, str)]
-        self.assertEqual(text_result, ["Hello", " Claude"])
+        self.assertEqual(result, ["Hello", " Claude"])
 
         # Verify the httpx.stream call
         mock_stream.assert_called_once_with(

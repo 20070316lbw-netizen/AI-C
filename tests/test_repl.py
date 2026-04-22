@@ -4,7 +4,6 @@ from aic.repl import start
 from aic.session import Session
 from aic.memory.store import MemoryStore
 from aic.dream.scheduler import DreamScheduler
-from aic.mcp.registry import MCPRegistry
 
 class TestRepl(unittest.TestCase):
     @patch('builtins.print')
@@ -20,17 +19,13 @@ class TestRepl(unittest.TestCase):
             }
         }
         mock_session = MagicMock(spec=Session)
-        mock_session.poor_mode = False
-        mock_session.poor_mode_reason = ""
         mock_store = MagicMock(spec=MemoryStore)
         mock_scheduler = MagicMock(spec=DreamScheduler)
-        mock_registry = MagicMock(spec=MCPRegistry)
 
-        with patch('aic.errors.console.print') as mock_console_print:
-            start(config, mock_session, mock_store, mock_scheduler, mock_registry)
-            # Verify it printed the ready message
-            mock_console_print.assert_any_call("[bold green][✓] aic ready[/bold green]")
-            mock_console_print.assert_any_call("[bold yellow][!] Exiting...[/bold yellow]")
+        start(config, mock_session, mock_store, mock_scheduler)
+        # Verify it printed the ready message
+        mock_print.assert_any_call("aic ready")
+        mock_print.assert_any_call("Exiting...")
 
 if __name__ == '__main__':
     unittest.main()
