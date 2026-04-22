@@ -12,8 +12,12 @@ from aic.providers.openai_compat import OpenAICompatProvider
 from aic.memory.store import MemoryStore
 from aic.dream.scheduler import DreamScheduler
 import aic.kairos as kairos
+from aic.mcp.registry import MCPRegistry
+from aic.mcp.runner import SandboxSession
+from aic.llm import complete
+from dataclasses import asdict
 
-def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamScheduler):
+def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamScheduler, registry: MCPRegistry):
     provider_name = config.get("provider", "deepseek")
     provider_config = config.get(provider_name, {})
 
@@ -133,10 +137,29 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
                 print("  /model      - Show current provider and model")
                 print("  /status     - Show status information")
                 print("  /tree       - Print directory tree")
+                print("  /mcp        - 查看已注册的 MCP server 和工具列表")
                 print("  /dream      - 手动触发 Dream 整理（前台同步，显示进度）")
                 print("  /cost       - 查看本次会话消耗（暂未实现）")
                 print("  /help       - Show this help message")
                 print("  /exit       - Exit aic")
+
+            elif cmd == "/mcp":
+                tools = registry.list_tools()
+                if not tools:
+                    print("未注册任何 MCP server。可在 .aic/mcp.json 中配置。")
+                else:
+                    servers = {}
+                    for t in tools:
+                        if t.server_name not in servers:
+                            servers[t.server_name] = []
+                        servers[t.server_name].append(t)
+
+                    for server_name, server_tools in servers.items():
+                        s_info = registry.servers.get(server_name)
+                        s_type = s_info.type if s_info else "unknown"
+                        print(f"  {server_name} ({s_type}) — {len(server_tools)} 个工具")
+                        for t in server_tools:
+                            print(f"    • {t.name:<24} {t.description}")
 
             elif cmd == "/poor":
                 session.poor_mode = not session.poor_mode
@@ -243,21 +266,48 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
         tui.render_message("user", user_input)
         tui.render_status(provider.name, provider.model, 0)
 
-        tui.start()
-        tui.render_stream_start()
+        # 有工具注册时，改为非流式调用以便检测 tool_calls
+        if registry.list_tools() and not session.poor_mode:
+            try:
+                response = complete(
+                    prompt=user_input,
+                    provider=provider_name,
+                    config=provider_config,
+                    system=session.get_system(),
+                    tools=[asdict(t) for t in registry.list_tools()],
+                )
+                if response.get("tool_calls"):
+                    sandbox = SandboxSession(
+                        registry=registry,
+                        complete_fn=complete,
+                        provider=provider_name,
+                        provider_config=provider_config,
+                        max_tool_turns=config.get("mcp", {}).get("max_tool_turns", 10),
+                    )
+                    final_content = sandbox.run(task=user_input)
+                else:
+                    final_content = response.get("content", "")
+            except Exception as e:
+                final_content = f"\n[错误] 请求异常: {str(e)}"
 
-        try:
-            for chunk in provider.stream(session.get_messages()):
-                tui.render_stream_chunk(chunk)
-        except Exception as e:
-            # Catching generic errors; provider network errors are often caught within stream() and yield text
-            tui.render_stream_chunk(f"\n[错误] 流式请求异常: {str(e)}")
+            tui.render_message("assistant", final_content)
+        else:
+            # 原有流式路径（无工具注册 or poor_mode）
+            tui.start()
+            tui.render_stream_start()
 
-        content = tui.stream_content
-        tui.render_stream_end()
-        tui.stop()
+            try:
+                for chunk in provider.stream(session.get_messages()):
+                    tui.render_stream_chunk(chunk)
+            except Exception as e:
+                # Catching generic errors; provider network errors are often caught within stream() and yield text
+                tui.render_stream_chunk(f"\n[错误] 流式请求异常: {str(e)}")
 
-        session.add_assistant(content)
+            final_content = tui.stream_content
+            tui.render_stream_end()
+            tui.stop()
+
+        session.add_assistant(final_content)
 
         if not session.poor_mode:
             scheduler.run(force=False)
