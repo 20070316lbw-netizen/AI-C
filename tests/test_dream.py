@@ -235,3 +235,61 @@ class TestConsolidator(unittest.TestCase):
 
         # max is 1, so excess should be archived
         self.store.archive.assert_called_with("id2")
+
+    def test_run_early_exit_no_unprocessed_phase1(self):
+        self.lock.get_state.return_value = {"phase": 0} # start_phase will be 1
+        self.store.list_unprocessed.return_value = []
+
+        with patch.object(self.consolidator, '_run_phase') as mock_run_phase:
+            res = self.consolidator.run()
+
+            mock_run_phase.assert_not_called()
+            self.assertEqual(res.merged, 0)
+            self.assertEqual(res.archived, 0)
+            self.assertEqual(res.added, 0)
+            self.assertEqual(res.conflicts_resolved, 0)
+
+    def test_run_resumes_from_phase3_no_unprocessed_check(self):
+        self.lock.get_state.return_value = {"phase": 2} # start_phase will be 3
+
+        with patch.object(self.consolidator, '_run_phase') as mock_run_phase:
+            res = self.consolidator.run()
+
+            self.store.list_unprocessed.assert_not_called()
+            mock_run_phase.assert_any_call(3)
+            mock_run_phase.assert_any_call(4)
+            self.assertEqual(mock_run_phase.call_count, 2)
+
+    def test_run_generic_exception(self):
+        self.lock.get_state.return_value = {"phase": 0, "session_id": "test_session"} # start_phase 1
+        self.store.list_unprocessed.return_value = ["mock_mem"]
+
+        with patch.object(self.consolidator, '_run_phase') as mock_run_phase:
+            mock_run_phase.side_effect = Exception("Generic error")
+
+            res = self.consolidator.run()
+
+            self.kairos_log.assert_called_once()
+            args, kwargs = self.kairos_log.call_args
+            self.assertEqual(args[0], "dream_error")
+            self.assertEqual(args[1], "test_session")
+            self.assertEqual(args[2]["error"], "Generic error")
+            self.assertIn("trace", args[2])
+
+    def test_run_llm_timeout_exception(self):
+        self.lock.get_state.return_value = {"phase": 0, "session_id": "test_session"} # start_phase 1
+        self.store.list_unprocessed.return_value = ["mock_mem"]
+
+        from aic.dream.consolidator import LLMTimeoutError
+        with patch.object(self.consolidator, '_run_phase') as mock_run_phase:
+            mock_run_phase.side_effect = LLMTimeoutError("Timeout error")
+
+            with self.assertRaises(LLMTimeoutError):
+                self.consolidator.run()
+
+            self.kairos_log.assert_called_once()
+            args, kwargs = self.kairos_log.call_args
+            self.assertEqual(args[0], "dream_error")
+            self.assertEqual(args[1], "test_session")
+            self.assertEqual(args[2]["error"], "Timeout error")
+            self.assertIn("trace", args[2])
