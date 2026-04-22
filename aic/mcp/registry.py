@@ -10,7 +10,6 @@ import subprocess
 import threading
 import queue
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 from aic.kairos import log_event
 
 @dataclass
@@ -32,11 +31,11 @@ class ToolInfo:
 
 class MCPRegistry:
     def __init__(self):
-        self.servers: Dict[str, ServerInfo] = {}
-        self.tools: Dict[str, ToolInfo] = {}
+        self.servers: dict[str, ServerInfo] = {}
+        self.tools: dict[str, ToolInfo] = {}
         self._request_id = 0
-        self._queues: Dict[subprocess.Popen, Dict[int, queue.Queue]] = {}
-        self._reader_threads: Dict[subprocess.Popen, threading.Thread] = {}
+        self._queues: dict[subprocess.Popen, dict[int, queue.Queue]] = {}
+        self._reader_threads: dict[subprocess.Popen, threading.Thread] = {}
         self._lock = threading.Lock()
 
     def _expand_env(self, env: dict[str, str]) -> dict[str, str]:
