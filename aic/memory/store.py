@@ -125,12 +125,42 @@ class MemoryStore:
             ''', (id,))
             self.conn.commit()
 
+    def _validate_order_by(self, order_by: str) -> None:
+        if not order_by.strip():
+            raise ValueError("order_by clause cannot be empty")
+
+        valid_columns = {
+            'id', 'content', 'type', 'weight', 'created_at', 'updated_at',
+            'source', 'session_id', 'is_archived', 'is_processed',
+            'superseded_by', 'meta', 'version', 'last_accessed_at'
+        }
+
+        parts = order_by.split(',')
+        for part in parts:
+            part = part.strip()
+            if not part:
+                raise ValueError("Empty order_by part")
+            tokens = part.split()
+            if not tokens:
+                raise ValueError("Empty order_by part")
+            if len(tokens) > 2:
+                raise ValueError(f"Invalid order_by clause: {order_by}")
+
+            col = tokens[0].lower()
+            if col not in valid_columns:
+                raise ValueError(f"Invalid column in order_by: {col}")
+
+            if len(tokens) == 2:
+                direction = tokens[1].upper()
+                if direction not in ('ASC', 'DESC'):
+                    raise ValueError(f"Invalid sort direction in order_by: {direction}")
+
     def list_by_type(self, type: str, order_by: Optional[str] = None) -> List[Memory]:
         with self.lock:
             cursor = self.conn.cursor()
             query = 'SELECT * FROM memories WHERE type = ? AND is_archived = 0'
             if order_by:
-                # order_by is safe in this context, just append it
+                self._validate_order_by(order_by)
                 query += f' ORDER BY {order_by}'
 
             cursor.execute(query, (type,))

@@ -161,6 +161,32 @@ class TestMemoryStore(unittest.TestCase):
         res = self.store.list_by_type("user")
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].id, "1")
+
+        # Test valid order_by
+        res_ordered = self.store.list_by_type("user", order_by="weight ASC, updated_at DESC")
+        self.assertEqual(len(res_ordered), 1)
+        self.assertEqual(res_ordered[0].id, "1")
+
+    def test_list_by_type_sql_injection(self):
+        # Valid cases
+        self.store.list_by_type("user", order_by="weight")
+        self.store.list_by_type("user", order_by="weight ASC")
+        self.store.list_by_type("user", order_by="weight DESC, created_at ASC")
+
+        # Invalid cases should raise ValueError
+        invalid_order_bys = [
+            "weight ASC; DROP TABLE memories;",
+            "weight ASC --",
+            "invalid_column",
+            "weight ASCENDING",
+            "weight ASC, id DROP"
+        ]
+
+        for invalid_order_by in invalid_order_bys:
+            with self.subTest(order_by=invalid_order_by):
+                with self.assertRaises(ValueError):
+                    self.store.list_by_type("user", order_by=invalid_order_by)
+
     def test_list_unprocessed(self):
         mem1 = Memory(id="1", content="a", type="user", source="test", session_id="s1")
         mem2 = Memory(id="2", content="b", type="user", source="test", session_id="s2")
