@@ -153,6 +153,15 @@ class MemoryStore:
             ''')
             return cursor.fetchone()[0]
 
+    def count_distinct_sessions(self) -> int:
+        with self.lock:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT COUNT(DISTINCT session_id) FROM memories
+                WHERE is_processed = 0 AND is_archived = 0 AND session_id IS NOT NULL
+            ''')
+            return cursor.fetchone()[0]
+
     def mark_processed(self, ids: List[str]) -> None:
         if not ids:
             return
