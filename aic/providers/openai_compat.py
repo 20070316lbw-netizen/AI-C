@@ -2,7 +2,7 @@
 L2 Provider 层：DS / GPT / Gemini / Moonshot 等
 """
 import json
-from typing import Iterator
+from typing import Any, Iterator
 
 import httpx
 
@@ -23,7 +23,7 @@ class OpenAICompatProvider(BaseProvider):
     def model(self) -> str:
         return self._model
 
-    def stream(self, messages: list[dict], **kwargs) -> Iterator[str]:
+    def stream(self, messages: list[dict], **kwargs) -> Iterator[str | dict[str, Any]]:
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -48,9 +48,7 @@ class OpenAICompatProvider(BaseProvider):
                     yield f"[错误] HTTP {response.status_code} — {error_text}"
                     return
 
-                tool_call_id = ""
-                tool_name = ""
-                arguments_buffer = ""
+                active_tools: dict[int, dict[str, str]] = {}
 
                 for line in response.iter_lines():
                     if not line:
@@ -66,14 +64,23 @@ class OpenAICompatProvider(BaseProvider):
                                 if "content" in delta and delta["content"]:
                                     yield delta["content"]
                                 if "tool_calls" in delta and delta["tool_calls"]:
-                                    tc = delta["tool_calls"][0]
-                                    if "id" in tc and tc["id"]:
-                                        tool_call_id = tc["id"]
-                                    if "function" in tc:
-                                        if "name" in tc["function"] and tc["function"]["name"]:
-                                            tool_name = tc["function"]["name"]
-                                        if "arguments" in tc["function"] and tc["function"]["arguments"]:
-                                            arguments_buffer += tc["function"]["arguments"]
+                                    for tc in delta["tool_calls"]:
+                                        idx = tc.get("index", 0)
+                                        if idx not in active_tools:
+                                            active_tools[idx] = {
+                                                "id": "",
+                                                "name": "",
+                                                "arguments": "",
+                                            }
+
+                                        if "id" in tc and tc["id"]:
+                                            active_tools[idx]["id"] = tc["id"]
+
+                                        if "function" in tc:
+                                            if "name" in tc["function"] and tc["function"]["name"]:
+                                                active_tools[idx]["name"] = tc["function"]["name"]
+                                            if "arguments" in tc["function"] and tc["function"]["arguments"]:
+                                                active_tools[idx]["arguments"] += tc["function"]["arguments"]
 
                             if "usage" in data and data["usage"]:
                                 yield {
@@ -85,18 +92,24 @@ class OpenAICompatProvider(BaseProvider):
                             continue
 
                 # Once stream completes, if we accumulated a tool call, yield it
-                if tool_name:
-                    yield {
-                        "type": "tool_calls",
-                        "tool_calls": [{
-                            "id": tool_call_id,
+                if active_tools:
+                    tool_calls = [
+                        {
+                            "id": tool_data["id"],
                             "type": "function",
                             "function": {
-                                "name": tool_name,
-                                "arguments": arguments_buffer
-                            }
-                        }]
-                    }
+                                "name": tool_data["name"],
+                                "arguments": tool_data["arguments"],
+                            },
+                        }
+                        for _, tool_data in sorted(active_tools.items())
+                        if tool_data["name"]
+                    ]
+                    if tool_calls:
+                        yield {
+                            "type": "tool_calls",
+                            "tool_calls": tool_calls,
+                        }
         except Exception as e:
              yield f"[错误] 网络异常 — {str(e)}"
              return

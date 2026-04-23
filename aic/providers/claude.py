@@ -2,7 +2,7 @@
 L2 Provider 层：Anthropic 原生 API
 """
 import json
-from typing import Iterator
+from typing import Any, Iterator
 
 import httpx
 
@@ -23,7 +23,7 @@ class ClaudeProvider(BaseProvider):
     def model(self) -> str:
         return self._model
 
-    def stream(self, messages: list[dict], **kwargs) -> Iterator[str]:
+    def stream(self, messages: list[dict], **kwargs) -> Iterator[str | dict[str, Any]]:
         headers = {
             "x-api-key": self._api_key,
             "anthropic-version": "2023-06-01",
@@ -54,9 +54,7 @@ class ClaudeProvider(BaseProvider):
                 current_event = None
                 input_tokens = 0
                 output_tokens = 0
-                tool_name = ""
-                tool_id = ""
-                tool_input_buffer = ""
+                active_tools: dict[int, dict[str, str]] = {}
 
                 for line in response.iter_lines():
                     if not line:
@@ -79,17 +77,27 @@ class ClaudeProvider(BaseProvider):
                                 usage = data.get("usage", {})
                                 output_tokens += usage.get("output_tokens", 0)
                             elif current_event == "content_block_start":
+                                block_index = data.get("index", 0)
                                 block = data.get("content_block", {})
                                 if block.get("type") == "tool_use":
-                                    tool_name = block.get("name", "")
-                                    tool_id = block.get("id", "")
-                                    tool_input_buffer = ""
+                                    active_tools[block_index] = {
+                                        "name": block.get("name", ""),
+                                        "id": block.get("id", ""),
+                                        "arguments": "",
+                                    }
                             elif current_event == "content_block_delta":
+                                block_index = data.get("index", 0)
                                 delta = data.get("delta", {})
                                 if delta.get("type") == "text_delta" and "text" in delta:
                                     yield delta["text"]
                                 elif delta.get("type") == "input_json_delta" and "partial_json" in delta:
-                                    tool_input_buffer += delta["partial_json"]
+                                    if block_index not in active_tools:
+                                        active_tools[block_index] = {
+                                            "name": "",
+                                            "id": "",
+                                            "arguments": "",
+                                        }
+                                    active_tools[block_index]["arguments"] += delta["partial_json"]
                         except json.JSONDecodeError:
                             continue
 
@@ -100,18 +108,24 @@ class ClaudeProvider(BaseProvider):
                     "output_tokens": output_tokens
                 }
 
-                if tool_name:
-                    yield {
-                        "type": "tool_calls",
-                        "tool_calls": [{
-                            "id": tool_id,
+                if active_tools:
+                    tool_calls = [
+                        {
+                            "id": tool_data["id"],
                             "type": "function",
                             "function": {
-                                "name": tool_name,
-                                "arguments": tool_input_buffer
-                            }
-                        }]
-                    }
+                                "name": tool_data["name"],
+                                "arguments": tool_data["arguments"],
+                            },
+                        }
+                        for _, tool_data in sorted(active_tools.items())
+                        if tool_data["name"]
+                    ]
+                    if tool_calls:
+                        yield {
+                            "type": "tool_calls",
+                            "tool_calls": tool_calls,
+                        }
 
         except Exception as e:
             yield f"[错误] 网络异常 — {str(e)}"
