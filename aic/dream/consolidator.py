@@ -2,6 +2,7 @@
 L4 Dream 层：4阶段 prompt 构建 + 调用子代理
 """
 import json
+import re
 import traceback
 from dataclasses import dataclass
 from datetime import date
@@ -85,14 +86,22 @@ class Consolidator:
 
     def _clean_json_response(self, text: str) -> str:
         text = text.strip()
-        if text.startswith("```"):
-            newline_idx = text.find("\n")
-            if newline_idx != -1:
-                text = text[newline_idx + 1:]
-            last_ticks = text.rfind("```")
-            if last_ticks != -1:
-                text = text[:last_ticks]
-        return text.strip()
+        if not text:
+            return text
+        # Prefer fenced code block content when present
+        fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            return fenced.group(1).strip()
+
+        # Fallback: slice from first JSON opener to last closer
+        start_candidates = [idx for idx in (text.find("{"), text.find("[")) if idx != -1]
+        end_candidates = [idx for idx in (text.rfind("}"), text.rfind("]")) if idx != -1]
+        if start_candidates and end_candidates:
+            start = min(start_candidates)
+            end = max(end_candidates)
+            if end >= start:
+                return text[start:end + 1].strip()
+        return text
 
     def _phase1(self):
         system = (
@@ -129,7 +138,7 @@ class Consolidator:
                 mem_id = self.agent.add_memory(
                     content=args.get("content", ""),
                     type=args.get("type", "user"),
-                    meta={"merged_from": args.get("merged_from", [])} if args.get("merged_from") else None
+                    merged_from=args.get("merged_from")
                 )
                 self._result.added += 1
                 responses.append(f"Tool {name} succeeded. Added memory with ID: {mem_id}")
@@ -185,13 +194,14 @@ class Consolidator:
         )
 
         # Extrapolate IDs from conflict string heuristically for context
-        import re
         ids = set(re.findall(r'[a-f0-9]{8}', conflict.lower()))
         mems_context = []
         for mem_id in ids:
             mem = self.agent.read_memory(mem_id)
             if mem:
-                mems_context.append(f"ID: {mem['id']} | Content: {mem['content']}")
+                mems_context.append(
+                    f"ID: {mem['id']} | CreatedAt: {mem.get('created_at')} | Content: {mem['content']}"
+                )
 
         prompt = f"Conflict: {conflict}\nContext Memories:\n" + "\n".join(mems_context)
 

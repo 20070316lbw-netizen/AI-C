@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -53,14 +54,21 @@ class MemoryExtractor:
 
     def clean_json_response(self, text: str) -> str:
         text = text.strip()
-        if text.startswith("```"):
-            newline_idx = text.find("\n")
-            if newline_idx != -1:
-                text = text[newline_idx + 1:]
-            last_ticks = text.rfind("```")
-            if last_ticks != -1:
-                text = text[:last_ticks]
-        return text.strip()
+        if not text:
+            return text
+
+        fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            return fenced.group(1).strip()
+
+        start_candidates = [idx for idx in (text.find("{"), text.find("[")) if idx != -1]
+        end_candidates = [idx for idx in (text.rfind("}"), text.rfind("]")) if idx != -1]
+        if start_candidates and end_candidates:
+            start = min(start_candidates)
+            end = max(end_candidates)
+            if end >= start:
+                return text[start:end + 1].strip()
+        return text
 
     def _extract(self, user_msg: str, assistant_msg: str) -> None:
         response_text = ""
