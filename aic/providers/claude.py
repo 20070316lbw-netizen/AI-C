@@ -54,7 +54,9 @@ class ClaudeProvider(BaseProvider):
                 current_event = None
                 input_tokens = 0
                 output_tokens = 0
-                tool_calls = []
+                tool_name = ""
+                tool_id = ""
+                tool_input_buffer = ""
 
                 for line in response.iter_lines():
                     if not line:
@@ -76,19 +78,40 @@ class ClaudeProvider(BaseProvider):
                             elif current_event == "message_delta":
                                 usage = data.get("usage", {})
                                 output_tokens += usage.get("output_tokens", 0)
+                            elif current_event == "content_block_start":
+                                block = data.get("content_block", {})
+                                if block.get("type") == "tool_use":
+                                    tool_name = block.get("name", "")
+                                    tool_id = block.get("id", "")
+                                    tool_input_buffer = ""
                             elif current_event == "content_block_delta":
                                 delta = data.get("delta", {})
                                 if delta.get("type") == "text_delta" and "text" in delta:
                                     yield delta["text"]
+                                elif delta.get("type") == "input_json_delta" and "partial_json" in delta:
+                                    tool_input_buffer += delta["partial_json"]
                         except json.JSONDecodeError:
                             continue
 
-                # After loop ends, yield usage
+                # After loop ends, yield usage then any accumulated tool call
                 yield {
                     "type": "usage",
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens
                 }
+
+                if tool_name:
+                    yield {
+                        "type": "tool_calls",
+                        "tool_calls": [{
+                            "id": tool_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": tool_input_buffer
+                            }
+                        }]
+                    }
 
         except Exception as e:
             yield f"[错误] 网络异常 — {str(e)}"

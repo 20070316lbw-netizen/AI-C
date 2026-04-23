@@ -78,11 +78,14 @@ class DreamScheduler:
         if self.store.count_unprocessed() < min_unprocessed:
             return False
 
-        # Gate 2: Time interval or Distinct sessions
+        # Gate 2: Distinct sessions (always required) + time interval (when a prior dream exists)
+        if self.store.count_distinct_sessions() < min_sessions:
+            return False
+
         last_dream_ts = self._last_dream_ts()
         if last_dream_ts is not None:
             hours_since_last_dream = (time.time() - last_dream_ts) / 3600.0
-            if hours_since_last_dream < min_interval_h or self.store.count_distinct_sessions() < min_sessions:
+            if hours_since_last_dream < min_interval_h:
                 return False
 
         # Gate 3: Lock existence/staleness (read-only check)

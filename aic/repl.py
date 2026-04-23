@@ -147,6 +147,7 @@ def start(config: dict, session: Session, store: MemoryStore, scheduler: DreamSc
     print_ok("aic ready")
     print_ok(f"Provider: {provider.name}, Model: {provider.model}")
 
+    final_content = ""
     while True:
         try:
             if session.poor_mode and session.poor_mode_reason == "token_guard":

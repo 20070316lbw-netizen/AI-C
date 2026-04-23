@@ -1,5 +1,6 @@
 import httpx
 import json
+from urllib.parse import quote
 from aic import kairos
 
 def search(query: str, api_key: str, max_results: int = 5) -> list[dict]:
@@ -11,7 +12,7 @@ def search(query: str, api_key: str, max_results: int = 5) -> list[dict]:
 
     # Cap max_results at 10
     limit = min(max_results, 10)
-    url = f"https://api.search.brave.com/res/v1/web/search?q={query}&count={limit}"
+    url = f"https://api.search.brave.com/res/v1/web/search?q={quote(query)}&count={limit}"
 
     try:
         resp = httpx.get(url, headers=headers, timeout=10.0)
