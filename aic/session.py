@@ -194,8 +194,10 @@ class Session:
     def clear(self):
         """清空历史，保留 context files"""
         self._messages.clear()
-        # Reset total context counter (files stay loaded)
-        self._total_context_chars = 0
+        # Recalculate from cached files — do NOT zero out since files are still loaded
+        self._total_context_chars = sum(
+            len(self._file_cache[p][1]) for p in self._context_files if p in self._file_cache
+        )
 
     def reset(self):
         """清空历史 + context files"""

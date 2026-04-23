@@ -43,7 +43,7 @@ class SandboxSession:
             except Exception as e:
                 return f"（LLM调用失败：{str(e)}）"
 
-        tools = [t.input_schema for t in tools_info]
+        tools = [{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools_info]
         tool_descriptions = "\n".join(
             f"{t.name}: {t.description}"
             for t in tools_info
