@@ -2,12 +2,12 @@
 L2 Provider 层：抽象类 BaseProvider，stream() 接口
 """
 from abc import ABC, abstractmethod
-from typing import Iterator
+from typing import Any, Iterator
 
 class BaseProvider(ABC):
     @abstractmethod
-    def stream(self, messages: list[dict], **kwargs) -> Iterator[str]:
-        """流式返回 token，每次 yield 一个字符串片段。"""
+    def stream(self, messages: list[dict], **kwargs) -> Iterator[str | dict[str, Any]]:
+        """流式返回内容，每次 yield 一个字符串片段或状态事件。"""
         ...
 
     @property
