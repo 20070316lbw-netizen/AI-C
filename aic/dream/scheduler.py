@@ -5,6 +5,7 @@ import glob
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from typing import Callable, Optional
@@ -114,7 +115,7 @@ class DreamScheduler:
 
             # Subprocess
             subprocess.Popen(
-                ["aic-dream", "--session", self.session_id],
+                [sys.executable, "-m", "aic.dream", "--session", self.session_id],
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

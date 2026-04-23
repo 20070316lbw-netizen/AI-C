@@ -76,8 +76,12 @@ class DreamLock:
             "orient_data": {}
         }
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
-        return True
+        if self.lock_path.exists():
+            try:
+                self.lock_path.unlink()
+            except FileNotFoundError:
+                pass
+        return self._write_lock_exclusive(state)
 
     def release(self) -> None:
         """删除锁文件，忽略 FileNotFoundError"""
@@ -99,4 +103,35 @@ class DreamLock:
         if orient_data is not None:
             state["orient_data"] = orient_data
 
-        self.lock_path.write_text(json.dumps(state), encoding="utf-8")
+        self._atomic_write_state(state)
+
+    def _write_lock_exclusive(self, state: dict) -> bool:
+        data = json.dumps(state, ensure_ascii=False)
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        try:
+            fd = os.open(self.lock_path, flags)
+        except FileExistsError:
+            # Lost race, let caller treat it as acquire failure
+            return False
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+        except Exception:
+            try:
+                self.lock_path.unlink()
+            except Exception:
+                pass
+            raise
+        return True
+
+    def _atomic_write_state(self, state: dict) -> None:
+        data = json.dumps(state, ensure_ascii=False)
+        tmp_path = self.lock_path.with_suffix(self.lock_path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, self.lock_path)

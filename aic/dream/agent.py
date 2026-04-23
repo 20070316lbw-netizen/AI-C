@@ -68,7 +68,7 @@ class DreamAgent:
         return [asdict(m) for m in mems[:limit]]
 
     # 只写（含幂等保护）
-    def add_memory(self, content: str, type: str, meta: dict = None) -> str:
+    def add_memory(self, content: str, type: str, merged_from: list[str] | None = None) -> str:
         content = str(content)[:500]
         content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()[:8]
 
@@ -78,7 +78,8 @@ class DreamAgent:
             return existing.id
 
         import json
-        meta_str = json.dumps(meta) if meta else None
+        meta = {"merged_from": merged_from} if merged_from else None
+        meta_str = json.dumps(meta, ensure_ascii=False) if meta else None
 
         mem = Memory(
             id=content_hash,

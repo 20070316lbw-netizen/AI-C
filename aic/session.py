@@ -50,8 +50,10 @@ class UsageAccumulator:
         total = 0.0
         for t in self.turns:
             cost_info = None
-            for key, (in_price, out_price) in pricing.items():
+            sorted_keys = sorted(pricing.keys(), key=len, reverse=True)
+            for key in sorted_keys:
                 if key in t.model:
+                    in_price, out_price = pricing[key]
                     cost_info = (in_price, out_price)
                     break
 
@@ -141,7 +143,7 @@ class Session:
                 print_warning(f"Skipped (too large): {path}")
                 return
             # Total context size limit
-            if getattr(self, "_total_context_chars", 0) + len(content) > MAX_TOTAL_CONTEXT_CHARS:
+            if self._total_context_chars + len(content) > MAX_TOTAL_CONTEXT_CHARS:
                 print_warning(f"Context budget full. Cannot add: {path}")
                 return
             abs_path = str(p.absolute())
@@ -167,8 +169,21 @@ class Session:
                 if filepath in self._file_cache and self._file_cache[filepath][0] == mtime:
                     content = self._file_cache[filepath][1]
                 else:
+                    old_content = self._file_cache.get(filepath, (None, ""))[1]
                     content = p.read_text(encoding="utf-8")
-                    self._file_cache[filepath] = (mtime, content)
+                    if len(content) > MAX_SINGLE_FILE_CHARS:
+                        print_warning(f"Skipped updated context (too large): {filepath}")
+                        content = old_content
+                        self._file_cache[filepath] = (mtime, old_content)
+                    else:
+                        projected_total = self._total_context_chars - len(old_content) + len(content)
+                        if projected_total > MAX_TOTAL_CONTEXT_CHARS:
+                            print_warning(f"Skipped updated context (budget exceeded): {filepath}")
+                            content = old_content
+                            self._file_cache[filepath] = (mtime, old_content)
+                        else:
+                            self._file_cache[filepath] = (mtime, content)
+                            self._total_context_chars = projected_total
                 system_parts.append(f"--- File: {filepath} ---\n{content.strip()}")
             except Exception:
                 pass

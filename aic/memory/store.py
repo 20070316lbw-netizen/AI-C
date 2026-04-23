@@ -1,7 +1,6 @@
 import sqlite3
 import threading
 import os
-import time
 from dataclasses import asdict
 from typing import Optional, List
 
@@ -72,12 +71,7 @@ class MemoryStore:
             cursor.execute('SELECT * FROM memories WHERE id = ?', (id,))
             row = cursor.fetchone()
             if row:
-                now = time.time()
-                cursor.execute('UPDATE memories SET last_accessed_at = ? WHERE id = ?', (now, id))
-                self.conn.commit()
-                mem = self._row_to_memory(row)
-                mem.last_accessed_at = now
-                return mem
+                return self._row_to_memory(row)
             return None
 
     def list(self, type: Optional[MemoryType] = None, include_archived: bool = False) -> List[Memory]:
@@ -101,19 +95,7 @@ class MemoryStore:
             rows = cursor.fetchall()
             if not rows:
                 return []
-
-            now = time.time()
-            mems = []
-            for row in rows:
-                mem = self._row_to_memory(row)
-                mem.last_accessed_at = now
-                mems.append(mem)
-
-            ids = [(now, mem.id) for mem in mems]
-            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
-            self.conn.commit()
-
-            return mems
+            return [self._row_to_memory(row) for row in rows]
 
     def archive(self, id: str) -> None:
         with self.lock:
@@ -180,19 +162,7 @@ class MemoryStore:
             rows = cursor.fetchall()
             if not rows:
                 return []
-
-            now = time.time()
-            mems = []
-            for row in rows:
-                mem = self._row_to_memory(row)
-                mem.last_accessed_at = now
-                mems.append(mem)
-
-            ids = [(now, mem.id) for mem in mems]
-            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
-            self.conn.commit()
-
-            return mems
+            return [self._row_to_memory(row) for row in rows]
 
     def list_unprocessed(self, exclude_session_id: Optional[str] = None) -> List[Memory]:
         with self.lock:
@@ -207,19 +177,7 @@ class MemoryStore:
             rows = cursor.fetchall()
             if not rows:
                 return []
-
-            now = time.time()
-            mems = []
-            for row in rows:
-                mem = self._row_to_memory(row)
-                mem.last_accessed_at = now
-                mems.append(mem)
-
-            ids = [(now, mem.id) for mem in mems]
-            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
-            self.conn.commit()
-
-            return mems
+            return [self._row_to_memory(row) for row in rows]
 
     def soft_delete(self, id: str, superseded_by: Optional[str] = None) -> None:
         if id == superseded_by:
@@ -291,16 +249,4 @@ class MemoryStore:
             rows = cursor.fetchall()
             if not rows:
                 return []
-
-            now = time.time()
-            mems = []
-            for row in rows:
-                mem = self._row_to_memory(row)
-                mem.last_accessed_at = now
-                mems.append(mem)
-
-            ids = [(now, mem.id) for mem in mems]
-            cursor.executemany('UPDATE memories SET last_accessed_at = ? WHERE id = ?', ids)
-            self.conn.commit()
-
-            return mems
+            return [self._row_to_memory(row) for row in rows]

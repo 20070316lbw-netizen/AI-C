@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -35,6 +36,7 @@ class TestDreamScheduler(unittest.TestCase):
             session_id=self.session_id,
             kairos_log=self.kairos_log
         )
+        self.store.count_distinct_sessions.return_value = 4
 
         # Mock os.path.expanduser to return our temp dir for logs
         self.log_dir = os.path.join(self.test_dir, "logs")
@@ -162,7 +164,7 @@ class TestDreamScheduler(unittest.TestCase):
         self.scheduler.run(force=False)
         mock_popen.assert_called_once()
         args, kwargs = mock_popen.call_args
-        self.assertEqual(args[0], ["aic-dream", "--session", self.session_id])
+        self.assertEqual(args[0], [sys.executable, "-m", "aic.dream", "--session", self.session_id])
         self.assertTrue(kwargs["start_new_session"])
 
     @patch("subprocess.Popen")
