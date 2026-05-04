@@ -24,6 +24,11 @@ DEFAULT_CONFIG = {
         "model": "gemini-2.5-pro",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"
     },
+    "custom": {
+        "api_key": "",
+        "model": "grok-4-1-fast-reasoning",
+        "base_url": "https://api.x.ai/v1"
+    },
     "dream": {
         "min_unprocessed": 20,
         "min_interval_h": 24,
@@ -67,10 +72,9 @@ def _get_raw_config() -> dict:
                 else:
                     config[k] = v
         except OSError:
-            # 文件不存在等 OS 级别错误时使用默认值，不报错
             pass
 
-    # 环境变量覆盖
+    # 环境变量覆盖（优先级最高）
     if "AIC_PROVIDER" in os.environ:
         config["provider"] = os.environ["AIC_PROVIDER"]
 
@@ -82,6 +86,9 @@ def _get_raw_config() -> dict:
 
     if "GEMINI_API_KEY" in os.environ:
         config.setdefault("gemini", {})["api_key"] = os.environ["GEMINI_API_KEY"]
+
+    if "XAI_API_KEY" in os.environ:
+        config.setdefault("custom", {})["api_key"] = os.environ["XAI_API_KEY"]
 
     if "BRAVE_API_KEY" in os.environ:
         config.setdefault("search", {})["brave_api_key"] = os.environ["BRAVE_API_KEY"]
